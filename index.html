@@ -1007,8 +1007,8 @@
         </div>
         <div class="s-row">
           <span class="s-label">Voxel sim</span>
-          <label class="chip on" id="chip-voxel" style="margin:0;">
-            <input type="checkbox" id="s-voxel-en" checked>
+          <label class="chip" id="chip-voxel" style="margin:0;">
+            <input type="checkbox" id="s-voxel-en">
             <span class="dot" style="background:var(--green)"></span>Enable
           </label>
         </div>
@@ -2304,82 +2304,244 @@ document.querySelectorAll('.s-mach-op').forEach(el=>{
 let allMoves=[], cachedText='';
 let cum3=[], cum5=[], cumT=[];
 
+// ── Arc tessellation helper ───────────────────────────────────────
+// Tessellates a G2/G3 arc into N linear segments.
+// plane: 'G17'=XY, 'G18'=ZX, 'G19'=YZ
+// cw: true for G2 (clockwise), false for G3 (CCW)
+// Returns array of {ex,ey,ez} endpoint offsets from start for each segment.
+function tessellateArc(x0,y0,z0, x1,y1,z1, i,j,k, r, cw, plane){
+  // Determine arc plane axes
+  let a0,a1,aZ; // a0,a1 = in-plane axes; aZ = helical axis
+  if(plane==='G17'){ a0=x0;a1=y0;aZ=z0; } // XY
+  else if(plane==='G18'){ a0=z0;a1=x0;aZ=y0; } // ZX
+  else { a0=y0;a1=z0;aZ=x0; } // YZ
+
+  let ea0,ea1,eaZ;
+  if(plane==='G17'){ ea0=x1;ea1=y1;eaZ=z1; }
+  else if(plane==='G18'){ ea0=z1;ea1=x1;eaZ=y1; }
+  else { ea0=y1;ea1=z1;eaZ=x1; }
+
+  let ci,cj; // center offsets in plane
+  if(plane==='G17'){ ci=i;cj=j; }
+  else if(plane==='G18'){ ci=k;cj=i; }
+  else { ci=j;cj=k; }
+
+  let cx,cy; // arc center in plane coords
+  if(r !== null){
+    // R-format: find center from start, end, radius
+    const dx=ea0-a0, dy=ea1-a1;
+    const d=Math.sqrt(dx*dx+dy*dy);
+    if(d < 1e-6) return []; // zero-length, skip
+    const h=Math.sqrt(Math.max(0, r*r - d*d/4));
+    const mx2=(a0+ea0)/2, my2=(a1+ea1)/2;
+    const nx=-dy/d, ny=dx/d; // perpendicular
+    // Sign: G2 CW → center to the right of travel direction
+    const sign = (cw ? 1 : -1) * (r > 0 ? 1 : -1);
+    cx = mx2 + sign*h*nx;
+    cy = my2 + sign*h*ny;
+  } else {
+    cx = a0 + ci;
+    cy = a1 + cj;
+  }
+
+  // Start and end angles
+  let startAngle = Math.atan2(a1-cy, a0-cx);
+  let endAngle   = Math.atan2(ea1-cy, ea0-cx);
+  const radius   = Math.sqrt((a0-cx)*(a0-cx)+(a1-cy)*(a1-cy));
+
+  // Arc sweep direction
+  let sweep;
+  if(cw){
+    sweep = startAngle - endAngle;
+    if(sweep <= 0) sweep += Math.PI*2;
+  } else {
+    sweep = endAngle - startAngle;
+    if(sweep <= 0) sweep += Math.PI*2;
+  }
+  // Full circle if start==end
+  if(Math.abs(ea0-a0)<1e-6 && Math.abs(ea1-a1)<1e-6) sweep = Math.PI*2;
+
+  // Number of segments: ~1 per degree, min 4
+  const nSeg = Math.max(4, Math.ceil(Math.abs(sweep) * radius / 0.5)); // ~0.5mm chord
+  const pts = [];
+  const helixStep = (eaZ - aZ) / nSeg;
+
+  for(let s=1; s<=nSeg; s++){
+    const t = s/nSeg;
+    const angle = cw ? startAngle - sweep*t : startAngle + sweep*t;
+    const pa0 = cx + radius*Math.cos(angle);
+    const pa1 = cy + radius*Math.sin(angle);
+    const paZ = aZ + helixStep*s;
+    let ex,ey,ez;
+    if(plane==='G17'){ ex=pa0;ey=pa1;ez=paZ; }
+    else if(plane==='G18'){ ex=pa1;ey=paZ;ez=pa0; }
+    else { ex=paZ;ey=pa0;ez=pa1; }
+    pts.push({ex,ey,ez});
+  }
+  return pts;
+}
+
 // ── Parser ────────────────────────────────────────────────────────
 function parseGcode(text){
   const lines=text.split('\n');
   let x=0,y=0,z=0,b=0,c=0,f=0;
   let absXYZ=true;
   let spindle=null, coolant='OFF', wcs='G54';
-  let plane='G17'; // XY plane default
-  let pendingT = null; // T word seen but M6 not yet
-  let activeT = null;  // last confirmed tool change
+  let plane='G17';
+  let pendingT=null;
+  // G92 offsets (applied to all subsequent moves)
+  let g92x=0,g92y=0,g92z=0;
+  // Modal motion code — persists across lines (e.g. repeated G1 lines without code)
+  let modalMotion=null; // 'G0','G1','G2','G3'
   const result=[];
+
+  // Helper: push one linear move into result
+  function pushMove(px,py,pz,nx,ny,nz,li,raw,type){
+    // Apply G92 offset
+    const ax=nx-g92x, ay=ny-g92y, az=nz-g92z;
+    const apx=px-g92x, apy=py-g92y, apz=pz-g92z;
+    const s0=toPart(apx,apy,apz,b,c);
+    const s1=toPart(ax,ay,az,b,c);
+    const dx2=s1[0]-s0[0],dy2=s1[1]-s0[1],dz2=s1[2]-s0[2];
+    if(dx2*dx2+dy2*dy2+dz2*dz2<1e-8) return;
+    result.push({type,s0,s1,mx:ax,my:ay,mz:az,mb:b,mc:c,me:f,layer:0,
+      lineNum:li+1,rawLine:raw,absXYZ,absE:true,
+      hotend:spindle,bedTemp:null,fan:coolant,plane,wcs,toolChange:null});
+  }
+
   for(let li=0;li<lines.length;li++){
     const raw=lines[li].trim();
-    // Strip inline comments %..% and (...)
     const stripped=raw.replace(/\(.*?\)/g,'').replace(/%.*?%/g,'').trim();
     if(!stripped||stripped[0]===';'||stripped[0]==='%'||stripped[0]===')') continue;
     const lu=stripped.toUpperCase();
-    // Modal G codes
-    if(/\bG90\b/.test(lu)){absXYZ=true;}
-    if(/\bG91\b/.test(lu)){absXYZ=false;}
-    // Plane selection
-    if(/\bG17\b/.test(lu)){plane='G17';}
-    if(/\bG18\b/.test(lu)){plane='G18';}
-    if(/\bG19\b/.test(lu)){plane='G19';}
-    // Work coordinate systems
-    if(/\bG54\b/.test(lu)){wcs='G54';}
-    if(/\bG55\b/.test(lu)){wcs='G55';}
-    if(/\bG56\b/.test(lu)){wcs='G56';}
-    if(/\bG57\b/.test(lu)){wcs='G57';}
-    if(/\bG58\b/.test(lu)){wcs='G58';}
-    if(/\bG59\b/.test(lu)){wcs='G59';}
-    // Spindle
-    if(/\bM3\b/.test(lu)||/\bM03\b/.test(lu)){const sm=lu.match(/\bS([\d.]+)/);spindle=sm?parseFloat(sm[1]):spindle;}
-    if(/\bM4\b/.test(lu)||/\bM04\b/.test(lu)){const sm=lu.match(/\bS([\d.]+)/);spindle=sm?parseFloat(sm[1]):spindle;}
-    if(/\bM5\b/.test(lu)||/\bM05\b/.test(lu)){spindle=0;}
-    // Coolant
-    if(/\bM8\b/.test(lu)||/\bM08\b/.test(lu)){coolant='FLOOD';}
-    if(/\bM7\b/.test(lu)||/\bM07\b/.test(lu)){coolant='MIST';}
-    if(/\bM9\b/.test(lu)||/\bM09\b/.test(lu)){coolant='OFF';}
-    // Tool change: T# sets pendingT, M6 confirms it
-    const tm = lu.match(/\bT(\d+)\b/);
-    if(tm) pendingT = parseInt(tm[1]);
-    if((/\bM6\b/.test(lu)||/\bM06\b/.test(lu)) && pendingT !== null){
-      activeT = pendingT; pendingT = null;
-      // Insert a zero-length marker move to trigger tool change in playback
+
+    // ── Modal state ──────────────────────────────────────────────
+    if(/\bG90\b/.test(lu)) absXYZ=true;
+    if(/\bG91\b/.test(lu)) absXYZ=false;
+    if(/\bG17\b/.test(lu)) plane='G17';
+    if(/\bG18\b/.test(lu)) plane='G18';
+    if(/\bG19\b/.test(lu)) plane='G19';
+    if(/\bG54\b/.test(lu)) wcs='G54';
+    if(/\bG55\b/.test(lu)) wcs='G55';
+    if(/\bG56\b/.test(lu)) wcs='G56';
+    if(/\bG57\b/.test(lu)) wcs='G57';
+    if(/\bG58\b/.test(lu)) wcs='G58';
+    if(/\bG59\b/.test(lu)) wcs='G59';
+
+    // ── Spindle / coolant ────────────────────────────────────────
+    if(/\bM0?3\b/.test(lu)){const sm=lu.match(/\bS([\d.]+)/);spindle=sm?parseFloat(sm[1]):spindle;}
+    if(/\bM0?4\b/.test(lu)){const sm=lu.match(/\bS([\d.]+)/);spindle=sm?parseFloat(sm[1]):spindle;}
+    if(/\bM0?5\b/.test(lu)) spindle=0;
+    if(/\bM0?8\b/.test(lu)) coolant='FLOOD';
+    if(/\bM0?7\b/.test(lu)) coolant='MIST';
+    if(/\bM0?9\b/.test(lu)) coolant='OFF';
+
+    // ── Tool change ──────────────────────────────────────────────
+    const tm=lu.match(/\bT(\d+)\b/);
+    if(tm) pendingT=parseInt(tm[1]);
+    if(/\bM0?6\b/.test(lu) && pendingT!==null){
+      const activeT=pendingT; pendingT=null;
       if(result.length){
-        const prev = result[result.length-1];
-        result.push({...prev, toolChange:activeT, lineNum:li+1, rawLine:raw});
+        const prev=result[result.length-1];
+        result.push({...prev,toolChange:activeT,lineNum:li+1,rawLine:raw});
       }
       continue;
     }
-    // Skip canned cycles (G80-G89) and other non-motion codes
+
+    // ── G92 — coordinate system offset ──────────────────────────
+    // G92 sets the current position to the given values (without moving)
+    if(/\bG92\b/.test(lu)){
+      const xm=lu.match(/\bX(-?[\d.]+)/),ym=lu.match(/\bY(-?[\d.]+)/),zm=lu.match(/\bZ(-?[\d.]+)/);
+      // G92 with no args cancels offset
+      if(!xm&&!ym&&!zm){ g92x=0;g92y=0;g92z=0; }
+      else {
+        if(xm) g92x=x-parseFloat(xm[1]);
+        if(ym) g92y=y-parseFloat(ym[1]);
+        if(zm) g92z=z-parseFloat(zm[1]);
+      }
+      continue;
+    }
+    // G92.1 — cancel G92 offset
+    if(/\bG92\.1\b/.test(lu)||/\bG92\.2\b/.test(lu)){ g92x=0;g92y=0;g92z=0; continue; }
+
+    // ── G28 / G30 — return to home ───────────────────────────────
+    // Simulate as rapid to 0,0,0 (or intermediate point if specified)
+    if(/\bG28\b/.test(lu)||/\bG30\b/.test(lu)){
+      const px=x,py=y,pz=z;
+      const xm=lu.match(/\bX(-?[\d.]+)/),ym=lu.match(/\bY(-?[\d.]+)/),zm=lu.match(/\bZ(-?[\d.]+)/);
+      // If axes specified, rapid to intermediate point first
+      if(xm||ym||zm){
+        const ix=xm?parseFloat(xm[1]):x, iy=ym?parseFloat(ym[1]):y, iz=zm?parseFloat(zm[1]):z;
+        pushMove(px,py,pz, ix,iy,iz, li,raw,'travel');
+        pushMove(ix,iy,iz, 0,0,0, li,raw,'travel');
+      } else {
+        pushMove(px,py,pz, 0,0,0, li,raw,'travel');
+      }
+      x=0;y=0;z=0;
+      continue;
+    }
+
+    // ── Skip canned cycles ───────────────────────────────────────
     if(/\bG8[0-9]\b/.test(lu)) continue;
-    // Only process G0 and G1 (rapid and feed)
-    const isG0=/\bG0\b/.test(lu)||/\bG00\b/.test(lu);
-    const isG1=/\bG1\b/.test(lu)||/\bG01\b/.test(lu);
-    if(!isG0&&!isG1) continue;
-    const px=x,py=y,pz=z,pb=b,pc=c;
+
+    // ── Parse axis words and feedrate ────────────────────────────
     const xm=lu.match(/\bX(-?[\d.]+)/),ym=lu.match(/\bY(-?[\d.]+)/),zm=lu.match(/\bZ(-?[\d.]+)/);
     const bm=lu.match(/\bB(-?[\d.]+)/),cm=lu.match(/\bC(-?[\d.]+)/),fm=lu.match(/\bF([\d.]+)/);
-    if(xm) x=absXYZ?parseFloat(xm[1]):x+parseFloat(xm[1]);
-    if(ym) y=absXYZ?parseFloat(ym[1]):y+parseFloat(ym[1]);
-    if(zm) z=absXYZ?parseFloat(zm[1]):z+parseFloat(zm[1]);
+    const im=lu.match(/\bI(-?[\d.]+)/),jm=lu.match(/\bJ(-?[\d.]+)/),km=lu.match(/\bK(-?[\d.]+)/);
+    const rm=lu.match(/\bR(-?[\d.]+)/);
+
+    // ── Detect motion code (explicit or modal) ───────────────────
+    let motionCode = null;
+    if(/\bG0\b/.test(lu)||/\bG00\b/.test(lu))  motionCode='G0';
+    else if(/\bG1\b/.test(lu)||/\bG01\b/.test(lu))  motionCode='G1';
+    else if(/\bG2\b/.test(lu)||/\bG02\b/.test(lu))  motionCode='G2';
+    else if(/\bG3\b/.test(lu)||/\bG03\b/.test(lu))  motionCode='G3';
+
+    // Use modal if no explicit code but axis words present
+    if(!motionCode && (xm||ym||zm||bm||cm||im||jm||km||rm) && modalMotion) motionCode=modalMotion;
+    if(!motionCode) continue; // no motion on this line
+
+    // Update modal motion
+    if(motionCode==='G0'||motionCode==='G1'||motionCode==='G2'||motionCode==='G3') modalMotion=motionCode;
+
+    if(fm) f=parseFloat(fm[1]);
     if(bm) b=parseFloat(bm[1]);
     if(cm) c=parseFloat(cm[1]);
-    if(fm) f=parseFloat(fm[1]);
-    // Classify: G0 = rapid, G1 = cut (3ax or 5ax based on B/C presence)
-    const is5ax=Math.abs(b)>0.5||Math.abs(c)>0.5||bm||cm;
-    let type;
-    if(isG0) type='travel'; // rapid
-    else type=is5ax?'e5':'e3'; // cut (3ax or 5ax)
-    const s0=toPart(px,py,pz,pb,pc);
-    const s1=toPart(x,y,z,b,c);
-    const dx2=s1[0]-s0[0],dy2=s1[1]-s0[1],dz2=s1[2]-s0[2];
-    if(dx2*dx2+dy2*dy2+dz2*dz2<1e-8) continue;
-    result.push({type,s0,s1,mx:x,my:y,mz:z,mb:b,mc:c,me:f,layer:0,lineNum:li+1,rawLine:raw,
-      absXYZ,absE:true,hotend:spindle,bedTemp:null,fan:coolant,plane,wcs,toolChange:null});
+
+    const px=x,py=y,pz=z;
+
+    // ── G0 / G1 — linear ────────────────────────────────────────
+    if(motionCode==='G0'||motionCode==='G1'){
+      if(xm) x=absXYZ?parseFloat(xm[1]):x+parseFloat(xm[1]);
+      if(ym) y=absXYZ?parseFloat(ym[1]):y+parseFloat(ym[1]);
+      if(zm) z=absXYZ?parseFloat(zm[1]):z+parseFloat(zm[1]);
+      const is5ax=Math.abs(b)>0.5||Math.abs(c)>0.5||bm||cm;
+      const type=motionCode==='G0'?'travel':(is5ax?'e5':'e3');
+      pushMove(px,py,pz, x,y,z, li,raw,type);
+      continue;
+    }
+
+    // ── G2 / G3 — arc ────────────────────────────────────────────
+    if(motionCode==='G2'||motionCode==='G3'){
+      const cw=(motionCode==='G2');
+      const nx=xm?(absXYZ?parseFloat(xm[1]):x+parseFloat(xm[1])):x;
+      const ny=ym?(absXYZ?parseFloat(ym[1]):y+parseFloat(ym[1])):y;
+      const nz=zm?(absXYZ?parseFloat(zm[1]):z+parseFloat(zm[1])):z;
+      const ii=im?parseFloat(im[1]):0;
+      const jj=jm?parseFloat(jm[1]):0;
+      const kk=km?parseFloat(km[1]):0;
+      const rr=rm?parseFloat(rm[1]):null;
+      const arcPts=tessellateArc(x,y,z, nx,ny,nz, ii,jj,kk, rr, cw, plane);
+      const is5ax=Math.abs(b)>0.5||Math.abs(c)>0.5;
+      const type=is5ax?'e5':'e3';
+      let lx=x,ly=y,lz=z;
+      for(const pt of arcPts){
+        pushMove(lx,ly,lz, pt.ex,pt.ey,pt.ez, li,raw,type);
+        lx=pt.ex;ly=pt.ey;lz=pt.ez;
+      }
+      x=nx;y=ny;z=nz;
+      continue;
+    }
   }
   return result;
 }
@@ -4616,7 +4778,30 @@ G0 X0 Y0
 M5
 M9
 M30`,
-  'Spiral Toolpath (3ax).nc': `; Spiral pocketing — circular pocket, 40mm dia
+  'Arc Milling G2-G3 (3ax).nc': `; Circular pocket with G2/G3 arcs
+; Full circle + helical entry
+G90 G54 G17
+G21
+M3 S8000
+M8
+G0 Z10
+G0 X0 Y0
+; Helical ramp entry — G3 with Z drop
+G1 Z2 F500
+G3 X0 Y0 I20 J0 Z-5 F800
+; Full circle passes at depth
+G3 X0 Y0 I20 J0 F1500
+G3 X0 Y0 I15 J0
+G3 X0 Y0 I10 J0
+G3 X0 Y0 I5 J0
+; Finish pass — outer circle
+G3 X0 Y0 I20 J0 F2000
+; Exit
+G0 Z10
+G0 X0 Y0
+M5
+M9
+M30`,
 G90 G54
 G17 G21
 M3 S7500
