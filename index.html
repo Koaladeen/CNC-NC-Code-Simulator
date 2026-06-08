@@ -1162,9 +1162,45 @@
         <input type="file" id="s-import-file" accept=".json" style="display:none">
       </div>
 
-      <!-- Machine -->
+      <!-- Scene Attachments -->
       <div class="modal-section">
-        <div class="modal-section-title">Machine Geometry</div>
+        <div class="modal-section-title">Scene Attachments</div>
+        <div class="s-hint" style="margin-bottom:8px;">Define which machine groups the tool and stock move with. Populated from loaded machine.</div>
+        <div class="s-row">
+          <span class="s-label">Tool parent</span>
+          <select class="s-input" id="s-tool-parent" style="flex:1;font-size:11px;font-family:var(--mono);">
+            <option value="">(world — no machine)</option>
+          </select>
+        </div>
+        <div class="s-row">
+          <span class="s-label">Stock parent</span>
+          <select class="s-input" id="s-stock-parent" style="flex:1;font-size:11px;font-family:var(--mono);">
+            <option value="">(world — no machine)</option>
+          </select>
+        </div>
+        <div class="s-row">
+          <span class="s-label">Tool offset</span>
+          <div style="display:flex;gap:4px;align-items:center;">
+            <span style="font-size:10px;color:var(--ax-x);font-family:var(--mono);">X</span>
+            <input class="s-input" id="s-tool-ox" type="number" value="0" step="0.1" style="width:52px;">
+            <span style="font-size:10px;color:var(--ax-y);font-family:var(--mono);">Y</span>
+            <input class="s-input" id="s-tool-oy" type="number" value="0" step="0.1" style="width:52px;">
+            <span style="font-size:10px;color:var(--ax-z);font-family:var(--mono);">Z</span>
+            <input class="s-input" id="s-tool-oz" type="number" value="0" step="0.1" style="width:52px;">
+          </div>
+        </div>
+        <div class="s-row">
+          <span class="s-label">Stock offset</span>
+          <div style="display:flex;gap:4px;align-items:center;">
+            <span style="font-size:10px;color:var(--ax-x);font-family:var(--mono);">X</span>
+            <input class="s-input" id="s-stock-ox" type="number" value="0" step="0.1" style="width:52px;">
+            <span style="font-size:10px;color:var(--ax-y);font-family:var(--mono);">Y</span>
+            <input class="s-input" id="s-stock-oy" type="number" value="0" step="0.1" style="width:52px;">
+            <span style="font-size:10px;color:var(--ax-z);font-family:var(--mono);">Z</span>
+            <input class="s-input" id="s-stock-oz" type="number" value="0" step="0.1" style="width:52px;">
+          </div>
+        </div>
+      </div>
         <div style="display:grid;grid-template-columns:1fr 52px 80px;gap:5px 8px;align-items:center;font-size:11px;margin-bottom:6px;">
           <span style="color:var(--text2);font-family:var(--mono);">GROUP</span>
           <span style="color:var(--text2);font-family:var(--mono);">COLOR</span>
@@ -1947,6 +1983,12 @@ function calcNozzleQuat(bRad, cRad){
 
 // Apply B/C rotation and Z translation to bedGroup in machine frame
 function updateBedRotation(moveIdx){
+  // If bedGroup is parented to a machine group, machine kinematics handle it
+  if(machineLoaded && bedGroup.parent !== rootGroup){
+    bedGroup.position.set(0,0,0);
+    bedGroup.quaternion.set(0,0,0,1);
+    return;
+  }
   const usePart = document.getElementById('viewMode').value==='part';
   if(usePart || !allMoves.length || moveIdx===0){
     bedGroup.quaternion.set(0,0,0,1);
@@ -1955,12 +1997,14 @@ function updateBedRotation(moveIdx){
   }
   const m = allMoves[Math.min(moveIdx-1, allMoves.length-1)];
   bedGroup.quaternion.copy(calcBedQuat(m.mb*Math.PI/180, m.mc*Math.PI/180));
-  bedGroup.position.set(0, -m.mz, 0); // Z moves bed down, same as machine model
+  bedGroup.position.set(0, -m.mz, 0);
 }
 
 // Update nozzle position to current move's world coords
 function updateNozzlePosition(moveIdx){
   if(!nozzleMesh) return;
+  // If staticGroup is parented to a machine group, machine kinematics handle positioning
+  if(machineLoaded && staticGroup.parent !== rootGroup) return;
   if(!allMoves.length||moveIdx===0){
     nozzleMesh.position.set(0,0,0);
     nozzleMesh.quaternion.set(0,0,0,1);
@@ -1968,7 +2012,6 @@ function updateNozzlePosition(moveIdx){
   }
   const m=allMoves[Math.min(moveIdx-1,allMoves.length-1)];
   const usePart=document.getElementById('viewMode').value==='part';
-
   if(usePart){
     const [wx,wy,wz]=toPart(m.mx,m.my,m.mz,m.mb,m.mc);
     nozzleMesh.position.set(wx,wz,-wy);
@@ -2455,7 +2498,10 @@ async function loadMachine(machineName){
   }
 
   rebuildMachineAppearancePanel();
-  rebuildJogAxes(); // update jog panel to reflect machine axes
+  rebuildJogAxes();
+  // Sync machine builder state with loaded config
+  if(cfg.groups) mbGroups = cfg.groups.map(g=>({...g, pivot:(g.pivot||[0,0,0]).slice(), toolMount:g.toolMount?{...g.toolMount}:undefined}));
+  applySceneAttachments();
 
   document.getElementById('prog').value = 0;
   applyProgress(0);
@@ -5080,8 +5126,61 @@ function closeMachineBuilder(){
 }
 
 document.getElementById('machineBuilderBtn').addEventListener('click', openMachineBuilder);
-document.getElementById('mbClose').addEventListener('click', closeMachineBuilder);
-document.getElementById('mb-overlay').addEventListener('click', e=>{ if(e.target===e.currentTarget) closeMachineBuilder(); });
+
+// ── Apply scene attachments based on spindle/stockParent flags ────
+function applySceneAttachments(){
+  if(!machineLoaded || !machineConfig) return;
+
+  const cfg = machineConfig;
+  const spindleGrp = (cfg.groups||[]).find(g=>g.spindle);
+  const stockGrp   = (cfg.groups||[]).find(g=>g.stockParent);
+
+  // ── Tool (nozzleMesh lives in staticGroup) ──────────────────────
+  if(spindleGrp && mGrp[spindleGrp.id]){
+    const parent = mGrp[spindleGrp.id];
+    if(staticGroup.parent !== parent){
+      if(staticGroup.parent) staticGroup.parent.remove(staticGroup);
+      parent.add(staticGroup);
+    }
+    // Apply mount offset and flips
+    const m = spindleGrp.toolMount || {x:0,y:0,z:0,flipX:false,flipY:false,flipZ:false};
+    staticGroup.position.set(m.x, m.z, -m.y);
+    staticGroup.scale.set(m.flipX?-1:1, m.flipY?-1:1, m.flipZ?-1:1);
+  } else {
+    // No spindle defined — put staticGroup back in rootGroup
+    if(staticGroup.parent !== rootGroup){
+      if(staticGroup.parent) staticGroup.parent.remove(staticGroup);
+      rootGroup.add(staticGroup);
+    }
+    staticGroup.position.set(0,0,0);
+    staticGroup.scale.set(1,1,1);
+  }
+
+  // ── Stock & toolpath (bedGroup) ─────────────────────────────────
+  if(stockGrp && mGrp[stockGrp.id]){
+    const parent = mGrp[stockGrp.id];
+    if(bedGroup.parent !== parent){
+      if(bedGroup.parent) bedGroup.parent.remove(bedGroup);
+      parent.add(bedGroup);
+    }
+    bedGroup.position.set(0,0,0);
+    bedGroup.quaternion.set(0,0,0,1); // machine group handles rotation now
+  } else {
+    // No stock parent — put bedGroup back in rootGroup
+    if(bedGroup.parent !== rootGroup){
+      if(bedGroup.parent) bedGroup.parent.remove(bedGroup);
+      rootGroup.add(bedGroup);
+    }
+  }
+}
+
+document.getElementById('mbClose').addEventListener('click', ()=>{
+  closeMachineBuilder();
+  clearDummyTool();
+});
+document.getElementById('mb-overlay').addEventListener('click', e=>{
+  if(e.target===e.currentTarget){ closeMachineBuilder(); clearDummyTool(); }
+});
 
 function renderMbGroupList(){
   const list=document.getElementById('mb-group-list');
@@ -5092,11 +5191,13 @@ function renderMbGroupList(){
     row.dataset.id=g.id;
     const axCls=g.axis?` ${g.axis}`:'';
     const invBadge=g.invert?'<span style="font-size:9px;color:var(--red);font-family:var(--mono);font-weight:700;">INV</span>':'';
+    const spindleBadge=g.spindle?'<span style="font-size:9px;color:var(--green);font-family:var(--mono);font-weight:700;background:rgba(34,197,94,0.12);padding:1px 5px;border-radius:2px;">SPINDLE</span>':'';
+    const stockBadge=g.stockParent?'<span style="font-size:9px;color:var(--amber);font-family:var(--mono);font-weight:700;background:rgba(245,158,11,0.12);padding:1px 5px;border-radius:2px;">STOCK</span>':'';
     row.innerHTML=`
       <div style="width:12px;height:12px;border-radius:2px;background:${g.color||'#888'};flex-shrink:0;border:1px solid rgba(0,0,0,0.2);"></div>
       <span class="mb-group-id">${g.id}</span>
       <span class="mb-group-axis${axCls}">${g.axis||'—'}</span>
-      ${invBadge}
+      ${invBadge}${spindleBadge}${stockBadge}
       <span class="mb-group-stl">${g.stl||'no STL'}</span>
       <span style="font-size:10px;color:var(--text3);">${g.parent||'root'}</span>
       <button class="mb-del" onclick="mbDeleteGroup('${g.id}');event.stopPropagation()">×</button>
@@ -5113,6 +5214,8 @@ function renderMbDetail(g){
   title.textContent='Edit: '+g.id;
   const parentOpts=['(root)',...mbGroups.filter(x=>x.id!==g.id).map(x=>x.id)];
   const axisOpts=['(static)','X','Y','Z','A','B','C'];
+  const mount=g.toolMount||{x:0,y:0,z:0,flipX:false,flipY:false,flipZ:false};
+
   body.innerHTML=`
     <div class="mb-field"><label>Group ID</label>
       <input id="mbd-id" type="text" value="${g.id}" oninput="mbSetField('${g.id}','id',this.value)"></div>
@@ -5148,6 +5251,56 @@ function renderMbDetail(g){
           oninput="mbSetField('${g.id}','opacity',parseFloat(this.value));this.nextElementSibling.textContent=Math.round(this.value*100)+'%'">
         <span style="font-family:var(--mono);font-size:10px;">${Math.round((g.opacity??1)*100)}%</span></div>
     </div>
+
+    <div style="border-top:1px solid var(--border);margin:10px 0 8px;"></div>
+
+    <!-- Spindle flag -->
+    <div class="mb-field">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+        <input type="checkbox" id="mbd-spindle" ${g.spindle?'checked':''}
+          onchange="mbSetSpindle('${g.id}',this.checked)">
+        <span style="color:var(--green);font-weight:700;">SPINDLE</span>
+        <span style="color:var(--text2);font-weight:400;">— tool attaches here</span>
+      </label>
+    </div>
+    <div id="mbd-mount-section" style="display:${g.spindle?'block':'none'};">
+      <div class="mb-field"><label>Tool mount offset (mm)</label>
+        <div class="mb-pivot-row">
+          <input type="number" step="0.1" value="${mount.x||0}" placeholder="X"
+            oninput="mbSetMount('${g.id}','x',parseFloat(this.value)||0)">
+          <input type="number" step="0.1" value="${mount.y||0}" placeholder="Y"
+            oninput="mbSetMount('${g.id}','y',parseFloat(this.value)||0)">
+          <input type="number" step="0.1" value="${mount.z||0}" placeholder="Z"
+            oninput="mbSetMount('${g.id}','z',parseFloat(this.value)||0)">
+        </div>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--text3);margin-top:3px;">Position of tool tip in spindle group local coords</div>
+      </div>
+      <div class="mb-field"><label>Tool axis flip</label>
+        <div style="display:flex;gap:12px;">
+          ${['X','Y','Z'].map(ax=>`
+            <label style="display:flex;align-items:center;gap:4px;font-family:var(--mono);font-size:10px;cursor:pointer;">
+              <input type="checkbox" ${mount['flip'+ax]?'checked':''}
+                onchange="mbSetMount('${g.id}','flip${ax}',this.checked)">
+              Flip ${ax}
+            </label>`).join('')}
+        </div>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--text3);margin-top:3px;">Correct STL axis orientation mismatches</div>
+      </div>
+      <button class="tb-btn" style="width:100%;font-size:10px;margin-top:4px;"
+        onclick="mbShowDummyTool('${g.id}')">⟳ Preview dummy tool</button>
+    </div>
+
+    <div style="border-top:1px solid var(--border);margin:10px 0 8px;"></div>
+
+    <!-- Stock parent flag -->
+    <div class="mb-field">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+        <input type="checkbox" id="mbd-stock" ${g.stockParent?'checked':''}
+          onchange="mbSetStockParent('${g.id}',this.checked)">
+        <span style="color:var(--amber);font-weight:700;">STOCK PARENT</span>
+        <span style="color:var(--text2);font-weight:400;">— stock &amp; toolpath move with this</span>
+      </label>
+    </div>
   `;
 }
 
@@ -5166,6 +5319,81 @@ function mbSetField(id,field,value){
   renderMbGroupList();
 }
 function mbSetPivot(id,axis,val){ const g=mbGroups.find(x=>x.id===id); if(g) g.pivot[axis]=val; }
+
+function mbSetSpindle(id, checked){
+  // Only one spindle allowed — clear others first
+  if(checked) mbGroups.forEach(g=>{ g.spindle=false; });
+  const g=mbGroups.find(x=>x.id===id);
+  if(!g) return;
+  g.spindle=checked;
+  if(checked && !g.toolMount) g.toolMount={x:0,y:0,z:0,flipX:false,flipY:false,flipZ:false};
+  renderMbGroupList();
+  renderMbDetail(g);
+  applySceneAttachments();
+}
+
+function mbSetStockParent(id, checked){
+  // Only one stock parent allowed
+  if(checked) mbGroups.forEach(g=>{ g.stockParent=false; });
+  const g=mbGroups.find(x=>x.id===id);
+  if(!g) return;
+  g.stockParent=checked;
+  renderMbGroupList();
+  renderMbDetail(g);
+  applySceneAttachments();
+}
+
+function mbSetMount(id, field, value){
+  const g=mbGroups.find(x=>x.id===id);
+  if(!g) return;
+  if(!g.toolMount) g.toolMount={x:0,y:0,z:0,flipX:false,flipY:false,flipZ:false};
+  g.toolMount[field]=value;
+  applySceneAttachments();
+  if(mbDummyTool) updateDummyToolTransform(g);
+}
+
+// ── Dummy tool preview ────────────────────────────────────────────
+let mbDummyTool = null;
+
+function mbShowDummyTool(id){
+  const g=mbGroups.find(x=>x.id===id);
+  if(!g||!g.spindle) return;
+  // Remove existing dummy
+  if(mbDummyTool){ if(mbDummyTool.parent) mbDummyTool.parent.remove(mbDummyTool); mbDummyTool=null; }
+  // Build a simple endmill shape
+  const grp=new THREE.Group();
+  // Flute cylinder
+  const fluteMat=new THREE.MeshLambertMaterial({color:0x44aaff,transparent:true,opacity:0.7});
+  const fluteGeo=new THREE.CylinderGeometry(3,3,20,12);
+  const flute=new THREE.Mesh(fluteGeo,fluteMat);
+  flute.position.y=10;
+  grp.add(flute);
+  // Shank
+  const shankGeo=new THREE.CylinderGeometry(3,3,25,12);
+  const shank=new THREE.Mesh(shankGeo,new THREE.MeshLambertMaterial({color:0x6688aa,transparent:true,opacity:0.5}));
+  shank.position.y=32;
+  grp.add(shank);
+  // Tip dot
+  const tipGeo=new THREE.SphereGeometry(1.5,8,8);
+  const tip=new THREE.Mesh(tipGeo,new THREE.MeshLambertMaterial({color:0xff4444}));
+  grp.add(tip); // at y=0 = tool tip
+  mbDummyTool=grp;
+  updateDummyToolTransform(g);
+  // Attach to the spindle machine group if loaded, else machineGroup
+  const parent=(machineLoaded&&mGrp[g.id])?mGrp[g.id]:machineGroup;
+  if(parent) parent.add(mbDummyTool);
+}
+
+function updateDummyToolTransform(g){
+  if(!mbDummyTool) return;
+  const m=g.toolMount||{x:0,y:0,z:0,flipX:false,flipY:false,flipZ:false};
+  mbDummyTool.position.set(m.x, m.z, -m.y); // machine→Three coords
+  mbDummyTool.scale.set(m.flipX?-1:1, m.flipY?-1:1, m.flipZ?-1:1);
+}
+
+function clearDummyTool(){
+  if(mbDummyTool){ if(mbDummyTool.parent) mbDummyTool.parent.remove(mbDummyTool); mbDummyTool=null; }
+}
 function mbDeleteGroup(id){
   if(mbGroups.length<=1){ alert('Cannot delete the last group.'); return; }
   mbGroups=mbGroups.filter(x=>x.id!==id);
@@ -5194,7 +5422,15 @@ function mbBuildJson(){
     const mx2=parseFloat(document.getElementById('mb-lim-'+ax+'-max')?.value);
     if(!isNaN(mn)&&!isNaN(mx2)) limits[ax]=[mn,mx2];
   });
-  return {name,groups:mbGroups.map(g=>({...g})),origin:[ox,oy,oz],limits};
+  return {name, groups:mbGroups.map(g=>{
+    const out={...g};
+    // Always include spindle/stockParent even if false (explicit)
+    out.spindle=!!g.spindle;
+    out.stockParent=!!g.stockParent;
+    if(g.spindle && g.toolMount) out.toolMount={...g.toolMount};
+    else delete out.toolMount;
+    return out;
+  }), origin:[ox,oy,oz], limits};
 }
 
 document.getElementById('mb-export-btn').addEventListener('click',()=>{
