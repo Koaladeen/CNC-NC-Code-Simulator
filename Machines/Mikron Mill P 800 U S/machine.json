@@ -68,7 +68,7 @@
     },
     {
       "id": "a",
-      "parent": "c_table",
+      "parent": "base",
       "axis": "A",
       "stl": "A.stl",
       "pivot": [
