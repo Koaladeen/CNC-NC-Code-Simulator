@@ -530,6 +530,18 @@
   #voxel-status.visible { display: block; }
 
   /* ─────────────────────────────────────────────────────────────────────
+     FIXTURE MODAL
+     ──────────────────────────────────────────────────────────────────── */
+  #fix-overlay { z-index: 155; }
+  #fix-modal { width: 740px; max-width: 97vw; }
+  #fix-table { width:100%; border-collapse:collapse; font-family:var(--mono); font-size:11px; }
+  #fix-table th { background:var(--ui-bg1); color:var(--text2); font-size:9px; letter-spacing:.1em;
+    text-transform:uppercase; padding:5px 6px; border-bottom:2px solid var(--border); text-align:left; }
+  #fix-status { font-family:var(--mono); font-size:10px; color:var(--text2); padding:4px 16px 0; }
+  #fix-footer { display:flex; gap:6px; padding:10px 14px; border-top:1px solid var(--border);
+    background:var(--ui-bg1); flex-wrap:wrap; }
+
+  /* ─────────────────────────────────────────────────────────────────────
      MACHINE BUILDER MODAL
      ──────────────────────────────────────────────────────────────────── */
   #mb-overlay { z-index: 160; }
@@ -940,6 +952,7 @@
     <div class="tb-group" style="border-left:1px solid var(--border);border-right:none;">
       <button class="tb-btn" id="toolBtn">⚒ TOOLS</button>
       <button class="tb-btn" id="machineBuilderBtn">⚙ MACHINE</button>
+      <button class="tb-btn" id="fixtureBtn">⬡ FIXTURES</button>
       <button class="tb-btn" id="settingsBtn">⚙ SETTINGS</button>
       <button class="tb-btn danger" id="collBtn">⬡ COLLISION</button>
       <button class="tb-btn" id="fsBtn" title="Toggle fullscreen">⛶</button>
@@ -1174,6 +1187,50 @@
             <input class="s-input" id="mc-oz" type="number" value="0" step="1" style="width:100%;">
           </div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fixture Modal -->
+  <div id="fix-overlay" class="modal-overlay">
+    <div id="fix-modal" class="modal-box">
+      <div class="modal-head">
+        <span class="title">FIXTURES & STOCK</span>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span id="fix-status" style="font-size:10px;color:var(--text2);font-family:var(--mono);">No machine loaded</span>
+          <button class="close-btn" id="fixClose">×</button>
+        </div>
+      </div>
+
+      <div class="modal-section" style="padding:8px 0 0;">
+        <div style="padding:0 14px 8px;font-family:var(--mono);font-size:10px;color:var(--text2);line-height:1.7;">
+          Fixtures load from <code style="background:var(--ui-bg2);padding:1px 4px;">Fixtures/*.json</code> in your repo — shared across all machines.<br>
+          Each JSON references an STL in the same folder and a parent machine group it moves with.
+        </div>
+        <div style="overflow-x:auto;">
+          <table id="fix-table">
+            <thead>
+              <tr>
+                <th>Name · STL · Parent · Color · Opacity &nbsp;|&nbsp; Position (X Y Z mm) · Rotation (Rx Ry Rz °)</th>
+              </tr>
+            </thead>
+            <tbody id="fix-tbody"></tbody>
+          </table>
+        </div>
+        <div id="fix-empty" style="padding:20px 16px;font-family:var(--mono);font-size:11px;color:var(--text3);display:none;">
+          No fixtures loaded. Add one below or push fixture JSONs to your repo's Fixtures/ folder.
+        </div>
+      </div>
+
+      <div id="fix-footer">
+        <button class="tb-btn" id="fix-add-btn" style="flex:1;min-width:100px;font-size:10px;">+ Add Fixture</button>
+        <button class="h-btn" id="fix-import-btn" style="flex:1;min-width:100px;padding:7px 10px;font-size:10px;">↑ Import JSON</button>
+        <input type="file" id="fix-import-file" accept=".json" style="display:none">
+        <button class="h-btn" id="fix-export-all-btn" style="flex:1;min-width:100px;padding:7px 10px;font-size:10px;">↓ Export All</button>
+        <button class="h-btn" id="fix-reload-btn" style="flex:1;min-width:100px;padding:7px 10px;font-size:10px;">⟳ Reload from repo</button>
+      </div>
+      <div style="padding:6px 16px 10px;font-family:var(--mono);font-size:10px;color:var(--text2);line-height:1.6;">
+        Push exported JSONs + STL files to <code style="background:var(--ui-bg2);padding:1px 4px;">Fixtures/</code> in your repo — they load automatically on startup.
       </div>
     </div>
   </div>
@@ -2200,6 +2257,8 @@ function voxelReset(){
 // ── Machine STL loader ────────────────────────────────────────────
 const MACHINES_API = 'https://api.github.com/repos/Koaladeen/CNC-NC-Code-Simulator/contents/Machines';
 const MACHINES_RAW = 'https://raw.githubusercontent.com/Koaladeen/CNC-NC-Code-Simulator/main/Machines';
+const FIXTURES_API = 'https://api.github.com/repos/Koaladeen/CNC-NC-Code-Simulator/contents/Fixtures';
+const FIXTURES_RAW = 'https://raw.githubusercontent.com/Koaladeen/CNC-NC-Code-Simulator/main/Fixtures';
 // ═══════════════════════════════════════════════════════════════════════════
 // MACHINE LOADER
 // Loads STL files from GitHub for each kinematic part (Frame/Z/B/C/Y/X),
@@ -2240,7 +2299,7 @@ let machineLoaded = false;
 let currentMachineName = '';
 
 // Default fallback colors by axis type
-const AXIS_COLORS = { X:'#aa6633', Y:'#5577aa', Z:'#5577aa', B:'#5577aa', C:'#3a6a5a', null:'#4a6080' };
+const AXIS_COLORS = { X:'#aa6633', Y:'#5577aa', Z:'#5577aa', B:'#5577aa', C:'#3a6a5a', 'null':'#4a6080' };
 
 function machMat(color='#5577aa', opacity=1){
   return new THREE.MeshLambertMaterial({
@@ -2413,7 +2472,246 @@ async function loadMachine(machineName){
     } else { setTimeout(()=>autoGenerateHulls(), 300); }
   } catch(e){ setTimeout(()=>autoGenerateHulls(), 300); }
 
+  // 4. Load fixtures from global Fixtures/ folder
+  await loadFixturesFromRepo();
+
   updateMachine(0);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// FIXTURE SYSTEM
+// Each fixture is one JSON + optional STL in Machines/{name}/Fixtures/
+// Schema: { name, stl, parent, position:[x,y,z], rotation:[rx,ry,rz],
+//           color, opacity, visible }
+// ═══════════════════════════════════════════════════════════════════════════
+
+let fixtureList = [];      // array of {cfg, mesh, group} objects
+let fixtureIdCounter = 1;
+
+function disposeFixtures(){
+  fixtureList.forEach(f=>{
+    if(f.group && f.group.parent) f.group.parent.remove(f.group);
+    f.group.traverse(c=>{ if(c.isMesh){ c.geometry?.dispose(); c.material?.dispose(); } });
+  });
+  fixtureList = [];
+}
+
+async function loadFixturesFromRepo(machineName, base){
+  disposeFixtures();
+  try{
+    const r = await fetch(FIXTURES_API);
+    if(!r.ok) return;
+    const items = await r.json();
+    const jsonFiles = items.filter(i=>i.name.endsWith('.json'));
+    await Promise.all(jsonFiles.map(async item=>{
+      try{
+        const jr = await fetch(`${FIXTURES_RAW}/${encodeURIComponent(item.name)}`);
+        if(!jr.ok) return;
+        const cfg = await jr.json();
+        cfg._id = fixtureIdCounter++;
+        cfg._source = item.name;
+        await spawnFixture(cfg, FIXTURES_RAW);
+      } catch(e){ console.warn('Fixture load failed:', item.name, e); }
+    }));
+    renderFixtureList();
+    document.getElementById('fix-status').textContent =
+      fixtureList.length ? `${fixtureList.length} fixture(s) loaded` : 'No fixtures in repo';
+  } catch(e){
+    console.info('Fixtures folder unavailable:', e.message);
+  }
+}
+
+async function spawnFixture(cfg, baseUrl){
+  const group = new THREE.Group();
+  group.name = 'fixture_'+(cfg._id||fixtureIdCounter++);
+
+  // Position and rotation
+  const pos = cfg.position || [0,0,0];
+  const rot = cfg.rotation || [0,0,0];
+  group.position.set(pos[0], pos[2], -pos[1]);
+  group.rotation.set(
+    rot[0]*Math.PI/180,
+    rot[2]*Math.PI/180,  // Y rotation uses Z machine
+   -rot[1]*Math.PI/180
+  );
+
+  // Load STL if specified
+  if(cfg.stl && baseUrl){
+    await new Promise(resolve=>{
+      new THREE.STLLoader().load(
+        `${baseUrl}/${encodeURIComponent(cfg.stl)}`,
+        geo=>{
+          const col = cfg.color || '#7a8a9a';
+          const op  = cfg.opacity !== undefined ? cfg.opacity : 1.0;
+          const mesh = new THREE.Mesh(geo,
+            new THREE.MeshLambertMaterial({color:col, transparent:op<1, opacity:op, side:THREE.DoubleSide}));
+          mesh.rotation.x = -Math.PI/2;
+          group.add(mesh);
+          resolve();
+        },
+        null,
+        ()=>resolve()
+      );
+    });
+  }
+
+  // Attach to parent machine group or machineGroup root
+  const parentGrp = (cfg.parent && mGrp[cfg.parent]) ? mGrp[cfg.parent] : machineGroup;
+  parentGrp.add(group);
+
+  fixtureList.push({ cfg, group });
+}
+
+function removeFixture(id){
+  const idx = fixtureList.findIndex(f=>f.cfg._id===id);
+  if(idx===-1) return;
+  const f = fixtureList[idx];
+  if(f.group.parent) f.group.parent.remove(f.group);
+  f.group.traverse(c=>{ if(c.isMesh){ c.geometry?.dispose(); c.material?.dispose(); } });
+  fixtureList.splice(idx,1);
+  renderFixtureList();
+}
+
+function updateFixture(id, field, value){
+  const f = fixtureList.find(x=>x.cfg._id===id);
+  if(!f) return;
+  // Handle nested position/rotation
+  const posFields = ['px','py','pz'];
+  const rotFields = ['rx','ry','rz'];
+  if(posFields.includes(field)){
+    const axis = posFields.indexOf(field);
+    f.cfg.position = f.cfg.position || [0,0,0];
+    f.cfg.position[axis] = parseFloat(value)||0;
+    const p = f.cfg.position;
+    f.group.position.set(p[0], p[2], -p[1]);
+  } else if(rotFields.includes(field)){
+    const axis = rotFields.indexOf(field);
+    f.cfg.rotation = f.cfg.rotation || [0,0,0];
+    f.cfg.rotation[axis] = parseFloat(value)||0;
+    const r = f.cfg.rotation;
+    f.group.rotation.set(r[0]*Math.PI/180, r[2]*Math.PI/180, -r[1]*Math.PI/180);
+  } else if(field==='parent'){
+    // Re-parent
+    if(f.group.parent) f.group.parent.remove(f.group);
+    f.cfg.parent = value||null;
+    const parentGrp = (value && mGrp[value]) ? mGrp[value] : machineGroup;
+    parentGrp.add(f.group);
+  } else if(field==='color'){
+    f.cfg.color = value;
+    f.group.traverse(c=>{ if(c.isMesh) c.material.color.set(value); });
+  } else if(field==='opacity'){
+    const op = parseFloat(value)||1;
+    f.cfg.opacity = op;
+    f.group.traverse(c=>{ if(c.isMesh){ c.material.opacity=op; c.material.transparent=op<1; } });
+  } else if(field==='visible'){
+    f.cfg.visible = value;
+    f.group.visible = value;
+  } else {
+    f.cfg[field] = value;
+  }
+}
+
+function renderFixtureList(){
+  const tbody = document.getElementById('fix-tbody');
+  if(!tbody) return;
+  tbody.innerHTML = '';
+  const parentOpts = ['(machine root)', ...Object.keys(mGrp).filter(k=>!k.includes('__pivot'))];
+
+  fixtureList.forEach(f=>{
+    const c = f.cfg;
+    const pos = c.position||[0,0,0];
+    const rot = c.rotation||[0,0,0];
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td style="padding:4px 6px;border-bottom:1px solid var(--border-lt);">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+          <input class="tt-inp" style="width:120px;" type="text" value="${escHtml(c.name||'')}"
+            placeholder="Fixture name"
+            onchange="updateFixture(${c._id},'name',this.value)">
+          <input class="tt-inp" style="width:90px;" type="text" value="${escHtml(c.stl||'')}"
+            placeholder="file.stl"
+            onchange="updateFixture(${c._id},'stl',this.value)">
+          <select class="tt-sel" style="width:110px;"
+            onchange="updateFixture(${c._id},'parent',this.value==='(machine root)'?null:this.value)">
+            ${parentOpts.map(p=>`<option${(c.parent||'(machine root)')===p?' selected':''}>${p}</option>`).join('')}
+          </select>
+          <input type="color" value="${c.color||'#7a8a9a'}" style="width:32px;height:26px;border:1px solid var(--border);padding:1px;"
+            oninput="updateFixture(${c._id},'color',this.value)">
+          <input type="range" min="0" max="1" step="0.05" value="${c.opacity??1}" style="width:60px;"
+            oninput="updateFixture(${c._id},'opacity',this.value)">
+          <button class="tt-del" onclick="removeFixture(${c._id})" title="Remove">×</button>
+        </div>
+        <div style="display:flex;gap:4px;align-items:center;font-family:var(--mono);font-size:10px;flex-wrap:wrap;">
+          <span style="color:var(--text2);min-width:24px;">POS</span>
+          ${['px','py','pz'].map((k,i)=>`
+            <input class="tt-inp num" type="number" step="0.1" value="${pos[i]||0}" style="width:64px;"
+              title="${['X','Y','Z'][i]}" placeholder="${['X','Y','Z'][i]}"
+              onchange="updateFixture(${c._id},'${k}',this.value)">
+          `).join('')}
+          <span style="color:var(--text2);min-width:24px;margin-left:8px;">ROT°</span>
+          ${['rx','ry','rz'].map((k,i)=>`
+            <input class="tt-inp num" type="number" step="1" value="${rot[i]||0}" style="width:64px;"
+              title="${['Rx','Ry','Rz'][i]}" placeholder="${['Rx','Ry','Rz'][i]}"
+              onchange="updateFixture(${c._id},'${k}',this.value)">
+          `).join('')}
+        </div>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+// Create a new blank fixture locally
+function addLocalFixture(){
+  const cfg = {
+    _id: fixtureIdCounter++,
+    _source: null,
+    name: 'New Fixture',
+    stl: '',
+    parent: null,
+    position: [0,0,0],
+    rotation: [0,0,0],
+    color: '#7a8a9a',
+    opacity: 1.0,
+    visible: true,
+  };
+  const group = new THREE.Group();
+  group.name = 'fixture_'+cfg._id;
+  machineGroup.add(group);
+  fixtureList.push({ cfg, group });
+  renderFixtureList();
+}
+
+// Export a single fixture as JSON
+function exportFixture(id){
+  const f = fixtureList.find(x=>x.cfg._id===id);
+  if(!f) return;
+  const out = {...f.cfg};
+  delete out._id; delete out._source;
+  const a = document.createElement('a');
+  a.href = 'data:application/json,'+encodeURIComponent(JSON.stringify(out, null, 2));
+  a.download = (out.name||'fixture').replace(/\s+/g,'_').toLowerCase()+'.json';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+
+// Export all fixtures
+function exportAllFixtures(){
+  fixtureList.forEach(f=>exportFixture(f.cfg._id));
+}
+
+// Import fixture JSON locally (no repo needed)
+function importFixtureJson(file){
+  const reader = new FileReader();
+  reader.onload = async e=>{
+    try{
+      const cfg = JSON.parse(e.target.result);
+      cfg._id = fixtureIdCounter++;
+      cfg._source = file.name;
+      await spawnFixture(cfg, null);
+      renderFixtureList();
+    } catch(err){ alert('JSON parse error: '+err.message); }
+  };
+  reader.readAsText(file);
 }
 
 function updateMachine(moveIdx){
@@ -4486,6 +4784,7 @@ document.getElementById('coll-import-file').addEventListener('change',e=>{
 initThree();
 initStaticSceneLate();
 fetchMachineList();
+loadFixturesFromRepo(); // load global fixtures on startup
 
 // Lock to landscape on mobile
 if(screen.orientation && screen.orientation.lock){
@@ -4708,6 +5007,36 @@ function syncJogFromMove(m){
     if(vEl) vEl.textContent=(jogPos[ax.key]||0).toFixed(ax.deg?1:3)+' '+(ax.unit||'');
   });
 }
+
+// ── Fixture modal open/close ───────────────────────────────────────────────
+document.getElementById('fixtureBtn').addEventListener('click', ()=>{
+  renderFixtureList();
+  const empty = document.getElementById('fix-empty');
+  if(empty) empty.style.display = fixtureList.length ? 'none' : 'block';
+  document.getElementById('fix-status').textContent =
+    currentMachineName
+      ? (fixtureList.length ? `${fixtureList.length} fixture(s) — ${currentMachineName}` : `No fixtures — ${currentMachineName}`)
+      : 'No machine loaded';
+  document.getElementById('fix-overlay').classList.add('open');
+});
+document.getElementById('fixClose').addEventListener('click', ()=>document.getElementById('fix-overlay').classList.remove('open'));
+document.getElementById('fix-overlay').addEventListener('click', e=>{ if(e.target===e.currentTarget) document.getElementById('fix-overlay').classList.remove('open'); });
+
+document.getElementById('fix-add-btn').addEventListener('click', addLocalFixture);
+
+document.getElementById('fix-import-btn').addEventListener('click', ()=>document.getElementById('fix-import-file').click());
+document.getElementById('fix-import-file').addEventListener('change', function(){
+  [...this.files].forEach(f=>importFixtureJson(f));
+  this.value='';
+});
+
+document.getElementById('fix-export-all-btn').addEventListener('click', exportAllFixtures);
+
+document.getElementById('fix-reload-btn').addEventListener('click', async ()=>{
+  document.getElementById('fix-status').textContent = 'Reloading…';
+  await loadFixturesFromRepo(null, null);
+  renderFixtureList();
+});
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MACHINE BUILDER
