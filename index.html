@@ -2269,14 +2269,41 @@ async function loadMachine(machineName){
 
   const base = `${MACHINES_RAW}/${encodeURIComponent(machineName)}`;
 
-  // 1. Fetch machine.json — required
+  // 1. Fetch machine.json — if missing or invalid, open Machine Builder with the name pre-filled
   let cfg;
   try{
     const r = await fetch(`${base}/machine.json`);
-    if(!r.ok) throw new Error('machine.json not found (HTTP '+r.status+')');
-    cfg = await r.json();
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const text = await r.text();
+    try{ cfg = JSON.parse(text); }
+    catch(parseErr){
+      document.getElementById('tb-status').textContent = '⚠ machine.json parse error — opening builder';
+      setTimeout(()=>{
+        document.getElementById('mb-name').value = machineName;
+        openMachineBuilder();
+        document.getElementById('tb-status').textContent = '';
+      }, 500);
+      return;
+    }
+    // Validate minimal structure
+    if(!cfg.groups || !Array.isArray(cfg.groups)){
+      document.getElementById('tb-status').textContent = '⚠ machine.json missing "groups" — opening builder';
+      setTimeout(()=>{
+        document.getElementById('mb-name').value = machineName;
+        if(cfg.name) document.getElementById('mb-name').value = cfg.name;
+        openMachineBuilder();
+        document.getElementById('tb-status').textContent = '';
+      }, 500);
+      return;
+    }
   } catch(e){
-    document.getElementById('tb-status').textContent = 'machine.json missing: '+e.message;
+    // No machine.json at all — open builder with name pre-filled
+    document.getElementById('tb-status').textContent = 'No machine.json — opening builder';
+    setTimeout(()=>{
+      document.getElementById('mb-name').value = machineName;
+      openMachineBuilder();
+      document.getElementById('tb-status').textContent = '';
+    }, 400);
     return;
   }
   machineConfig = cfg;
@@ -2285,43 +2312,32 @@ async function loadMachine(machineName){
   if(!machineGroup.parent) rootGroup.add(machineGroup);
   machineGroup.visible = true;
 
-  // Origin offset from config
   const orig = cfg.origin || [0,0,0];
   machineGroup.position.set(orig[0], orig[2], -orig[1]);
 
-  // Create one Group per defined group
   const groups = cfg.groups || [];
   groups.forEach(g=>{
     const grp = new THREE.Group();
     grp.name = g.id;
-    // Apply pivot offset if defined (pivot is the point the group rotates around)
     if(g.pivot && (g.pivot[0]||g.pivot[1]||g.pivot[2])){
-      // Wrap in a pivot group
       const pivGrp = new THREE.Group();
       pivGrp.name = g.id+'_pivot';
       pivGrp.position.set(g.pivot[0], g.pivot[2], -g.pivot[1]);
-      grp._pivotOffset = g.pivot;
       pivGrp.add(grp);
       mGrp[g.id+'__pivot'] = pivGrp;
-      mGrp[g.id] = grp;
-    } else {
-      mGrp[g.id] = grp;
     }
+    mGrp[g.id] = grp;
   });
 
-  // Wire up parent relationships
   groups.forEach(g=>{
-    const grpOrPivot = mGrp[g.id+'__pivot'] || mGrp[g.id];
-    if(g.parent && mGrp[g.parent]){
-      mGrp[g.parent].add(grpOrPivot);
-    } else {
-      machineGroup.add(grpOrPivot);
-    }
+    const top = mGrp[g.id+'__pivot'] || mGrp[g.id];
+    if(g.parent && mGrp[g.parent]) mGrp[g.parent].add(top);
+    else machineGroup.add(top);
   });
 
-  // 3. Load STLs
+  // 3. Load STLs — all failures are silent, machine still works without them
   const loader = new THREE.STLLoader();
-  let loaded = 0;
+  let loaded = 0, failed = 0;
   const stlGroups = groups.filter(g=>g.stl);
   const promises = stlGroups.map(g=>new Promise(resolve=>{
     loader.load(
@@ -2330,42 +2346,45 @@ async function loadMachine(machineName){
         const col = g.color || AXIS_COLORS[g.axis] || '#5577aa';
         const op  = g.opacity !== undefined ? g.opacity : 1;
         const mesh = new THREE.Mesh(geo, machMat(col, op));
-        mesh.rotation.x = -Math.PI/2; // STL Y-up → Three.js Y-up
-        mGrp[g.id].add(mesh);
+        mesh.rotation.x = -Math.PI/2;
+        if(mGrp[g.id]) mGrp[g.id].add(mesh);
         loaded++;
         document.getElementById('tb-status').textContent =
-          `loading machine… ${loaded}/${stlGroups.length}`;
+          `loading… ${loaded}/${stlGroups.length}`;
         resolve();
       },
       null,
-      ()=>{ resolve(); } // silently skip missing STLs
+      ()=>{ failed++; resolve(); }
     );
   }));
   await Promise.all(promises);
 
   machineLoaded = true;
   currentMachineName = machineName;
-  document.getElementById('tb-status').textContent = '';
+  const statusMsg = failed > 0
+    ? `Machine loaded (${loaded} STLs, ${failed} missing)`
+    : `Machine loaded (${loaded} STLs)`;
+  document.getElementById('tb-status').textContent = statusMsg;
+  setTimeout(()=>document.getElementById('tb-status').textContent='', 3000);
   setSimpleSceneVisible(false);
 
-  // Apply limits from machine.json to settings panel
+  // Apply limits
   if(cfg.limits){
     const L = cfg.limits;
-    if(L.x){ document.getElementById('lim-xmin').value=L.x[0]; document.getElementById('lim-xmax').value=L.x[1]; }
-    if(L.y){ document.getElementById('lim-ymin').value=L.y[0]; document.getElementById('lim-ymax').value=L.y[1]; }
-    if(L.z){ document.getElementById('lim-zmin').value=L.z[0]; document.getElementById('lim-zmax').value=L.z[1]; }
-    if(L.b){ document.getElementById('lim-bmin').value=L.b[0]; document.getElementById('lim-bmax').value=L.b[1]; }
+    const set=(id,v)=>{ const el=document.getElementById(id); if(el) el.value=v; };
+    if(L.x){ set('lim-xmin',L.x[0]); set('lim-xmax',L.x[1]); }
+    if(L.y){ set('lim-ymin',L.y[0]); set('lim-ymax',L.y[1]); }
+    if(L.z){ set('lim-zmin',L.z[0]); set('lim-zmax',L.z[1]); }
+    if(L.b){ set('lim-bmin',L.b[0]); set('lim-bmax',L.b[1]); }
   }
 
-  // Rebuild machine appearance panel dynamically
   rebuildMachineAppearancePanel();
 
   document.getElementById('prog').value = 0;
   applyProgress(0);
   goHome();
 
-  // Try collision.json
-  let collisionLoaded = false;
+  // Collision proxies
   try{
     const cr = await fetch(`${base}/collision.json`);
     if(cr.ok){
@@ -2373,10 +2392,8 @@ async function loadMachine(machineName){
       collProxies = (data.proxies||[]).map(p=>({...p,id:nextProxyId++}));
       rebuildProxyWireframes();
       document.getElementById('coll-status').textContent = `Loaded ${collProxies.length} proxies`;
-      collisionLoaded = true;
-    }
-  } catch(e){}
-  if(!collisionLoaded) setTimeout(()=>autoGenerateHulls(), 300);
+    } else { setTimeout(()=>autoGenerateHulls(), 300); }
+  } catch(e){ setTimeout(()=>autoGenerateHulls(), 300); }
 
   updateMachine(0);
 }
