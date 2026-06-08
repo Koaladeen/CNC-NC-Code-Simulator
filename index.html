@@ -530,6 +530,55 @@
   #voxel-status.visible { display: block; }
 
   /* ─────────────────────────────────────────────────────────────────────
+     MACHINE BUILDER MODAL
+     ──────────────────────────────────────────────────────────────────── */
+  #mb-overlay { z-index: 160; }
+  #mb-modal { width: 780px; max-width: 97vw; max-height: 90vh; display:flex; flex-direction:column; }
+  #mb-modal .modal-head { flex-shrink:0; }
+  #mb-body { flex:1; overflow-y:auto; display:flex; gap:0; }
+  #mb-chain { flex:1; min-width:0; overflow-y:auto; padding:10px 14px; border-right:1px solid var(--border); }
+  #mb-detail { width:260px; flex-shrink:0; overflow-y:auto; padding:10px 14px; background:var(--ui-bg0); }
+
+  .mb-group-row {
+    display:flex; align-items:center; gap:6px; padding:5px 8px; margin-bottom:4px;
+    background:var(--ui-bg1); border:1px solid var(--border); cursor:pointer;
+    font-family:var(--mono); font-size:11px;
+  }
+  .mb-group-row:hover { background:var(--ui-bg2); }
+  .mb-group-row.selected { border-color:var(--accent); background:var(--accent-dim); }
+  .mb-group-id { font-weight:600; color:var(--text0); flex:1; }
+  .mb-group-axis {
+    font-size:9px; padding:2px 6px; border-radius:2px; font-weight:700;
+    background:var(--ui-bg3); color:var(--text2); letter-spacing:0.08em;
+  }
+  .mb-group-axis.X { background:#c820201a; color:#c82020; }
+  .mb-group-axis.Y { background:#22c55e1a; color:#16a34a; }
+  .mb-group-axis.Z { background:#3b82f61a; color:#1d4ed8; }
+  .mb-group-axis.B { background:#f59e0b1a; color:#b45309; }
+  .mb-group-axis.C { background:#8b5cf61a; color:#6d28d9; }
+  .mb-group-stl { font-size:10px; color:var(--text2); max-width:90px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .mb-del { background:none; border:none; color:var(--text3); cursor:pointer; font-size:14px; padding:0 2px; }
+  .mb-del:hover { color:var(--red); }
+
+  #mb-detail-title { font-family:var(--mono); font-size:10px; font-weight:700; color:var(--text2);
+    letter-spacing:0.1em; text-transform:uppercase; padding-bottom:8px; border-bottom:1px solid var(--border); margin-bottom:10px; }
+  .mb-field { margin-bottom:8px; }
+  .mb-field label { display:block; font-family:var(--mono); font-size:10px; color:var(--text2);
+    margin-bottom:3px; letter-spacing:0.05em; text-transform:uppercase; }
+  .mb-field input, .mb-field select { width:100%; font-family:var(--mono); font-size:11px;
+    background:#fff; border:1px solid var(--border); padding:4px 6px; color:var(--text0); }
+  .mb-field input:focus, .mb-field select:focus { outline:1px solid var(--accent); }
+  .mb-pivot-row { display:grid; grid-template-columns:1fr 1fr 1fr; gap:4px; }
+  .mb-pivot-row input { text-align:right; }
+
+  #mb-footer { display:flex; gap:6px; padding:10px 14px; border-top:1px solid var(--border);
+    background:var(--ui-bg1); flex-wrap:wrap; flex-shrink:0; }
+
+  .mb-chain-indent {
+    margin-left:16px; border-left:2px solid var(--border-lt); padding-left:6px;
+  }
+
+  /* ─────────────────────────────────────────────────────────────────────
      TOOL TABLE MODAL
      ──────────────────────────────────────────────────────────────────── */
   #tool-overlay { z-index: 150; }
@@ -890,6 +939,7 @@
 
     <div class="tb-group" style="border-left:1px solid var(--border);border-right:none;">
       <button class="tb-btn" id="toolBtn">⚒ TOOLS</button>
+      <button class="tb-btn" id="machineBuilderBtn">⚙ MACHINE</button>
       <button class="tb-btn" id="settingsBtn">⚙ SETTINGS</button>
       <button class="tb-btn danger" id="collBtn">⬡ COLLISION</button>
       <button class="tb-btn" id="fsBtn" title="Toggle fullscreen">⛶</button>
@@ -1103,35 +1153,12 @@
       <div class="modal-section">
         <div class="modal-section-title">Machine Geometry</div>
         <div style="display:grid;grid-template-columns:1fr 52px 80px;gap:5px 8px;align-items:center;font-size:11px;margin-bottom:6px;">
-          <span style="color:var(--text2);font-family:var(--mono);">PART</span>
+          <span style="color:var(--text2);font-family:var(--mono);">GROUP</span>
           <span style="color:var(--text2);font-family:var(--mono);">COLOR</span>
           <span style="color:var(--text2);font-family:var(--mono);">OPACITY</span>
-
-          <span class="s-label">Frame</span>
-          <input class="s-color" id="mc-Frame-col" type="color" value="#4a6080">
-          <input type="range" class="s-mach-op" id="mc-Frame-op" data-part="Frame" min="0" max="1" step="0.05" value="0.2" style="-webkit-appearance:none;appearance:none;width:100%;height:3px;background:var(--bg4);border-radius:2px;outline:none;cursor:pointer;">
-
-          <span class="s-label">Z</span>
-          <input class="s-color" id="mc-Z-col" type="color" value="#5577aa">
-          <input type="range" class="s-mach-op" id="mc-Z-op" data-part="Z" min="0" max="1" step="0.05" value="1">
-
-          <span class="s-label">B</span>
-          <input class="s-color" id="mc-B-col" type="color" value="#5577aa">
-          <input type="range" class="s-mach-op" id="mc-B-op" data-part="B" min="0" max="1" step="0.05" value="1">
-
-          <span class="s-label">C (table)</span>
-          <input class="s-color" id="mc-C-col" type="color" value="#3a6a5a">
-          <input type="range" class="s-mach-op" id="mc-C-op" data-part="C" min="0" max="1" step="0.05" value="1">
-
-          <span class="s-label">Y</span>
-          <input class="s-color" id="mc-Y-col" type="color" value="#5577aa">
-          <input type="range" class="s-mach-op" id="mc-Y-op" data-part="Y" min="0" max="1" step="0.05" value="1">
-
-          <span class="s-label">X (toolhead)</span>
-          <input class="s-color" id="mc-X-col" type="color" value="#aa6633">
-          <input type="range" class="s-mach-op" id="mc-X-op" data-part="X" min="0" max="1" step="0.05" value="1">
+          <div id="mc-appearance-rows" style="display:contents;"></div>
         </div>
-        <div class="s-hint" style="margin-bottom:8px;">Push STL files to Machines/{name}/ in repo.<br>Expected: Frame.stl Z.stl B.stl C.stl Y.stl X.stl</div>
+        <div class="s-hint" style="margin-bottom:8px;">Groups and colors are loaded from machine.json.<br>Use ⚙ Machine Builder to edit the chain.</div>
         <div class="s-section-title" style="margin-top:8px;">Origin Offset (mm)</div>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px 8px;align-items:center;font-size:11px;">
           <div style="display:flex;flex-direction:column;gap:3px;">
@@ -1146,6 +1173,87 @@
             <span style="color:var(--text2);font-family:var(--mono);font-size:9px;">Z</span>
             <input class="s-input" id="mc-oz" type="number" value="0" step="1" style="width:100%;">
           </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Machine Builder Modal -->
+  <div id="mb-overlay" class="modal-overlay">
+    <div id="mb-modal" class="modal-box">
+      <div class="modal-head">
+        <span class="title">MACHINE BUILDER</span>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-family:var(--mono);font-size:10px;color:var(--text2);" id="mb-machine-name-display">No machine loaded</span>
+          <button class="close-btn" id="mbClose">×</button>
+        </div>
+      </div>
+
+      <div id="mb-body">
+        <!-- Left: kinematic chain list -->
+        <div id="mb-chain">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+            <span style="font-family:var(--mono);font-size:10px;color:var(--text2);letter-spacing:0.1em;">KINEMATIC CHAIN</span>
+            <button class="tb-btn" id="mb-add-group-btn" style="font-size:10px;padding:3px 10px;">+ Add Group</button>
+          </div>
+          <div style="font-family:var(--mono);font-size:10px;color:var(--text2);margin-bottom:10px;line-height:1.6;">
+            Define each moving body. Set its parent to build the chain.<br>
+            Drag the list to reorder. Each group loads one STL from the repo.
+          </div>
+          <!-- Machine name -->
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+            <span style="font-family:var(--mono);font-size:10px;color:var(--text2);white-space:nowrap;">MACHINE NAME</span>
+            <input id="mb-name" type="text" placeholder="e.g. Mikron Mill P 800 U S"
+              style="flex:1;font-family:var(--mono);font-size:11px;background:#fff;border:1px solid var(--border);padding:4px 6px;">
+          </div>
+          <!-- Origin offset -->
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;font-family:var(--mono);font-size:10px;color:var(--text2);">
+            <span>ORIGIN&nbsp;</span>
+            <span style="color:var(--ax-x);">X</span><input type="number" id="mb-ox" value="0" step="1" style="width:54px;font-family:var(--mono);font-size:11px;background:#fff;border:1px solid var(--border);padding:3px 5px;text-align:right;">
+            <span style="color:var(--ax-y);">Y</span><input type="number" id="mb-oy" value="0" step="1" style="width:54px;font-family:var(--mono);font-size:11px;background:#fff;border:1px solid var(--border);padding:3px 5px;text-align:right;">
+            <span style="color:var(--ax-z);">Z</span><input type="number" id="mb-oz" value="0" step="1" style="width:54px;font-family:var(--mono);font-size:11px;background:#fff;border:1px solid var(--border);padding:3px 5px;text-align:right;">
+            <span style="color:var(--text3);">mm</span>
+          </div>
+          <!-- Axis limits -->
+          <div style="margin-bottom:10px;">
+            <div style="font-family:var(--mono);font-size:10px;color:var(--text2);margin-bottom:5px;letter-spacing:0.05em;">AXIS LIMITS</div>
+            <div style="display:grid;grid-template-columns:20px 1fr 1fr;gap:3px 6px;align-items:center;font-family:var(--mono);font-size:10px;">
+              ${['X','Y','Z','B','C'].map(ax=>`
+                <span style="color:var(--ax-${ax.toLowerCase()})">${ax}</span>
+                <input type="number" id="mb-lim-${ax.toLowerCase()}-min" value="${ax==='B'?-30:ax==='Z'?-500:-400}" step="1"
+                  style="width:100%;font-family:var(--mono);font-size:11px;background:#fff;border:1px solid var(--border);padding:3px 5px;text-align:right;" placeholder="min">
+                <input type="number" id="mb-lim-${ax.toLowerCase()}-max" value="${ax==='B'?110:ax==='Z'?0:400}" step="1"
+                  style="width:100%;font-family:var(--mono);font-size:11px;background:#fff;border:1px solid var(--border);padding:3px 5px;text-align:right;" placeholder="max">
+              `).join('')}
+            </div>
+          </div>
+          <!-- Group rows -->
+          <div id="mb-group-list"></div>
+        </div>
+
+        <!-- Right: detail panel for selected group -->
+        <div id="mb-detail">
+          <div id="mb-detail-title">Select a group to edit</div>
+          <div id="mb-detail-body">
+            <div style="font-family:var(--mono);font-size:10px;color:var(--text3);line-height:1.7;">
+              Click a group in the chain to edit its properties:<br>
+              • ID, parent, axis<br>
+              • STL filename (uploaded to repo)<br>
+              • Pivot point (rotation center)<br>
+              • Color and opacity
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="mb-footer">
+        <button class="tb-btn" id="mb-export-btn" style="flex:1;min-width:120px;font-size:10px;">↓ Export machine.json</button>
+        <button class="h-btn" id="mb-load-btn" style="flex:1;min-width:120px;padding:7px 10px;font-size:10px;">↑ Import machine.json</button>
+        <input type="file" id="mb-import-file" accept=".json" style="display:none">
+        <button class="tb-btn" id="mb-apply-btn" style="flex:1;min-width:120px;font-size:10px;border-color:var(--green);color:var(--green);">▶ Apply to scene</button>
+        <div style="width:100%;font-family:var(--mono);font-size:10px;color:var(--text2);line-height:1.6;">
+          Export machine.json → upload to <code style="background:var(--ui-bg2);padding:1px 4px;">Machines/{name}/machine.json</code> in your repo along with the STL files.
+          STL files must be named exactly as specified in each group's STL field.
         </div>
       </div>
     </div>
@@ -2083,181 +2191,276 @@ const MACHINES_RAW = 'https://raw.githubusercontent.com/Koaladeen/CNC-NC-Code-Si
 // Kinematic tree: Frame, Z↕, Z→B (rotates on Z), B→C (rotates on B-local Y)
 //                 Y (translates Z), Y→X (translates X, carries nozzle)
 // ═══════════════════════════════════════════════════════════════════════════
-const MACHINE_PARTS = ['Frame','Z','B','C','Y','X'];
+// ═══════════════════════════════════════════════════════════════════════════
+// MACHINE SYSTEM — data-driven kinematic chain from machine.json
+//
+// machine.json schema:
+// {
+//   "name": "Mikron Mill P 800 U S",
+//   "groups": [
+//     { "id":"base",    "stl":"base.stl",    "parent":null,     "axis":null, "pivot":[0,0,0], "color":"#4a6080", "opacity":0.2 },
+//     { "id":"x_slide", "stl":"x_slide.stl", "parent":"base",   "axis":"X",  "pivot":[0,0,0], "color":"#5577aa", "opacity":1   },
+//     { "id":"y_slide", "stl":"y_slide.stl", "parent":"x_slide","axis":"Y",  "pivot":[0,0,0], "color":"#5577aa", "opacity":1   },
+//     { "id":"c_table", "stl":"c_table.stl", "parent":"y_slide","axis":"C",  "pivot":[0,0,0], "color":"#3a6a5a", "opacity":1   },
+//     { "id":"b_tilt",  "stl":"b_tilt.stl",  "parent":"c_table","axis":"B",  "pivot":[0,-110,0],"color":"#5577aa","opacity":1  },
+//     { "id":"z_slide", "stl":"z_slide.stl", "parent":"base",   "axis":"Z",  "pivot":[0,0,0], "color":"#5577aa", "opacity":1   },
+//     { "id":"spindle", "stl":"spindle.stl", "parent":"z_slide","axis":null, "pivot":[0,0,0], "color":"#aa6633", "opacity":1   }
+//   ],
+//   "origin": [0,0,0],
+//   "limits": {"x":[-400,400],"y":[-300,300],"z":[-500,0],"b":[-30,110],"c":[-999,999]}
+// }
+//
+// The "axis" field drives the kinematic update:
+//   X/Y/Z → translation along that machine axis
+//   B      → rotation around machine Y (tilt)
+//   C      → rotation around machine Z (table spin)
+//   null   → static (moves with parent only)
+// ═══════════════════════════════════════════════════════════════════════════
 
+let machineConfig = null;   // parsed machine.json
 const machineGroup = new THREE.Group();
-const mGrp = {};
+const mGrp = {};            // id → THREE.Group
 let machineLoaded = false;
 let currentMachineName = '';
 
-const machMat = (part) => {
-  const op  = parseFloat(document.getElementById(`mc-${part}-op`)?.value  ?? 1);
-  const col = document.getElementById(`mc-${part}-col`)?.value ?? '#5577aa';
-  return new THREE.MeshLambertMaterial({color:col, transparent:op<1, opacity:op, side:THREE.DoubleSide});
-};
+// Default fallback colors by axis type
+const AXIS_COLORS = { X:'#aa6633', Y:'#5577aa', Z:'#5577aa', B:'#5577aa', C:'#3a6a5a', null:'#4a6080' };
 
-// Fetch machine folder list from GitHub API
+function machMat(color='#5577aa', opacity=1){
+  return new THREE.MeshLambertMaterial({
+    color, transparent: opacity < 1, opacity,
+    side: THREE.DoubleSide
+  });
+}
+
+function disposeMachine(){
+  Object.values(mGrp).forEach(g=>{
+    g.traverse(c=>{ if(c.isMesh){ c.geometry.dispose(); c.material.dispose(); } });
+    if(g.parent) g.parent.remove(g);
+  });
+  Object.keys(mGrp).forEach(k=>delete mGrp[k]);
+  machineGroup.clear();
+  machineLoaded = false;
+  currentMachineName = '';
+  machineConfig = null;
+}
+
 async function fetchMachineList(){
   try{
     const res = await fetch(MACHINES_API);
     if(!res.ok) throw new Error('API '+res.status);
     const items = await res.json();
     const sel = document.getElementById('machineSelect');
-    items
-      .filter(i=>i.type==='dir')
-      .forEach(i=>{
-        const opt=document.createElement('option');
-        opt.value=i.name;
-        opt.textContent=i.name;
-        sel.appendChild(opt);
-      });
+    items.filter(i=>i.type==='dir').forEach(i=>{
+      const opt = document.createElement('option');
+      opt.value = i.name; opt.textContent = i.name;
+      sel.appendChild(opt);
+    });
   } catch(e){
-    console.info('Machine list unavailable (works on GitHub Pages):', e.message);
+    console.info('Machine list unavailable:', e.message);
   }
-}
-
-function disposeMachine(){
-  Object.values(mGrp).forEach(g=>{
-    g.traverse(c=>{if(c.isMesh){c.geometry.dispose();c.material.dispose();}});
-    if(g.parent) g.parent.remove(g);
-  });
-  Object.keys(mGrp).forEach(k=>delete mGrp[k]);
-  if(machineGroup.parent) machineGroup.clear();
-  machineLoaded=false;
-  currentMachineName='';
 }
 
 async function loadMachine(machineName){
   if(!machineName) return;
-  if(machineName===currentMachineName && machineLoaded) {
-    machineGroup.visible=true; return;
-  }
+  if(machineName === currentMachineName && machineLoaded){ machineGroup.visible=true; return; }
   disposeMachine();
-  document.getElementById('tb-status').textContent='loading machine…';
+  document.getElementById('tb-status').textContent = 'loading machine…';
 
-  // Bed side: Frame > Z > B > C (C IS the bed)
-  mGrp.Frame = new THREE.Group(); machineGroup.add(mGrp.Frame);
-  mGrp.Z     = new THREE.Group(); machineGroup.add(mGrp.Z);
-  mGrp.B     = new THREE.Group(); mGrp.Z.add(mGrp.B);
-  mGrp.C     = new THREE.Group(); mGrp.B.add(mGrp.C);
-  // Toolhead side: Y moves under machine root, X under Y
-  mGrp.Y = new THREE.Group(); machineGroup.add(mGrp.Y);
-  mGrp.X = new THREE.Group(); mGrp.Y.add(mGrp.X);
-
-  if(!machineGroup.parent) rootGroup.add(machineGroup);
-  machineGroup.rotation.set(0, 0, 0);
-  machineGroup.visible=true;
-
-  const loader = new THREE.STLLoader();
   const base = `${MACHINES_RAW}/${encodeURIComponent(machineName)}`;
-  let loaded=0;
 
-  const promises = MACHINE_PARTS.map(name=>new Promise(resolve=>{
+  // 1. Fetch machine.json — required
+  let cfg;
+  try{
+    const r = await fetch(`${base}/machine.json`);
+    if(!r.ok) throw new Error('machine.json not found (HTTP '+r.status+')');
+    cfg = await r.json();
+  } catch(e){
+    document.getElementById('tb-status').textContent = 'machine.json missing: '+e.message;
+    return;
+  }
+  machineConfig = cfg;
+
+  // 2. Build Three.js group hierarchy from config
+  if(!machineGroup.parent) rootGroup.add(machineGroup);
+  machineGroup.visible = true;
+
+  // Origin offset from config
+  const orig = cfg.origin || [0,0,0];
+  machineGroup.position.set(orig[0], orig[2], -orig[1]);
+
+  // Create one Group per defined group
+  const groups = cfg.groups || [];
+  groups.forEach(g=>{
+    const grp = new THREE.Group();
+    grp.name = g.id;
+    // Apply pivot offset if defined (pivot is the point the group rotates around)
+    if(g.pivot && (g.pivot[0]||g.pivot[1]||g.pivot[2])){
+      // Wrap in a pivot group
+      const pivGrp = new THREE.Group();
+      pivGrp.name = g.id+'_pivot';
+      pivGrp.position.set(g.pivot[0], g.pivot[2], -g.pivot[1]);
+      grp._pivotOffset = g.pivot;
+      pivGrp.add(grp);
+      mGrp[g.id+'__pivot'] = pivGrp;
+      mGrp[g.id] = grp;
+    } else {
+      mGrp[g.id] = grp;
+    }
+  });
+
+  // Wire up parent relationships
+  groups.forEach(g=>{
+    const grpOrPivot = mGrp[g.id+'__pivot'] || mGrp[g.id];
+    if(g.parent && mGrp[g.parent]){
+      mGrp[g.parent].add(grpOrPivot);
+    } else {
+      machineGroup.add(grpOrPivot);
+    }
+  });
+
+  // 3. Load STLs
+  const loader = new THREE.STLLoader();
+  let loaded = 0;
+  const stlGroups = groups.filter(g=>g.stl);
+  const promises = stlGroups.map(g=>new Promise(resolve=>{
     loader.load(
-      `${base}/${name}.stl`,
+      `${base}/${encodeURIComponent(g.stl)}`,
       geo=>{
-        const mesh=new THREE.Mesh(geo, machMat(name));
-        mesh.rotation.x=-Math.PI/2;
-        mGrp[name].add(mesh);
+        const col = g.color || AXIS_COLORS[g.axis] || '#5577aa';
+        const op  = g.opacity !== undefined ? g.opacity : 1;
+        const mesh = new THREE.Mesh(geo, machMat(col, op));
+        mesh.rotation.x = -Math.PI/2; // STL Y-up → Three.js Y-up
+        mGrp[g.id].add(mesh);
         loaded++;
-        document.getElementById('tb-status').textContent=`loading machine… ${loaded}/${MACHINE_PARTS.length}`;
+        document.getElementById('tb-status').textContent =
+          `loading machine… ${loaded}/${stlGroups.length}`;
         resolve();
       },
       null,
-      ()=>resolve()
+      ()=>{ resolve(); } // silently skip missing STLs
     );
   }));
-
   await Promise.all(promises);
-  machineLoaded=true;
-  currentMachineName=machineName;
-  document.getElementById('tb-status').textContent='';
+
+  machineLoaded = true;
+  currentMachineName = machineName;
+  document.getElementById('tb-status').textContent = '';
   setSimpleSceneVisible(false);
-  // Reset to start position
-  document.getElementById('prog').value=0;
+
+  // Apply limits from machine.json to settings panel
+  if(cfg.limits){
+    const L = cfg.limits;
+    if(L.x){ document.getElementById('lim-xmin').value=L.x[0]; document.getElementById('lim-xmax').value=L.x[1]; }
+    if(L.y){ document.getElementById('lim-ymin').value=L.y[0]; document.getElementById('lim-ymax').value=L.y[1]; }
+    if(L.z){ document.getElementById('lim-zmin').value=L.z[0]; document.getElementById('lim-zmax').value=L.z[1]; }
+    if(L.b){ document.getElementById('lim-bmin').value=L.b[0]; document.getElementById('lim-bmax').value=L.b[1]; }
+  }
+
+  // Rebuild machine appearance panel dynamically
+  rebuildMachineAppearancePanel();
+
+  document.getElementById('prog').value = 0;
   applyProgress(0);
   goHome();
-  // Try to load machine.json for this machine (settings + proxies)
-  let collisionLoadedFromMachineJson = false;
-  try{
-    const mr = await fetch(`${MACHINES_RAW}/${encodeURIComponent(machineName)}/machine.json`);
-    if(mr.ok){
-      const cfg = await mr.json();
-      applyMachineConfig(cfg);
-      collisionLoadedFromMachineJson = collProxies.length > 0;
-      document.getElementById('coll-status').textContent =
-        `Auto-loaded settings from machine.json (${collProxies.length} proxies)`;
-    }
-  }catch(e){}
 
-  // Try to load collision.json — takes precedence over proxies in machine.json
+  // Try collision.json
+  let collisionLoaded = false;
   try{
-    const cr=await fetch(`${MACHINES_RAW}/${encodeURIComponent(machineName)}/collision.json`);
+    const cr = await fetch(`${base}/collision.json`);
     if(cr.ok){
-      const data=await cr.json();
-      collProxies=(data.proxies||[]).map(p=>({...p,id:nextProxyId++}));
+      const data = await cr.json();
+      collProxies = (data.proxies||[]).map(p=>({...p,id:nextProxyId++}));
       rebuildProxyWireframes();
-      document.getElementById('coll-status').textContent=`Auto-loaded ${collProxies.length} proxies from collision.json`;
-    } else if(!collisionLoadedFromMachineJson) {
-      // No collision.json and no proxies from machine.json — auto-generate hulls
-      setTimeout(()=>autoGenerateHulls(), 200);
+      document.getElementById('coll-status').textContent = `Loaded ${collProxies.length} proxies`;
+      collisionLoaded = true;
     }
-  }catch(e){
-    if(!collisionLoadedFromMachineJson) setTimeout(()=>autoGenerateHulls(), 200);
-  }
+  } catch(e){}
+  if(!collisionLoaded) setTimeout(()=>autoGenerateHulls(), 300);
+
   updateMachine(0);
 }
 
 function updateMachine(moveIdx){
-  if(!machineLoaded||!machineGroup.parent) return;
-  machineGroup.visible=document.getElementById('showMach').checked;
+  if(!machineLoaded || !machineGroup.parent || !machineConfig) return;
+  machineGroup.visible = document.getElementById('showMach').checked;
   if(!machineGroup.visible) return;
 
-  let mx=0,my=0,mz=0,mb=0,mc=0;
-  if(allMoves.length && moveIdx>0){
-    const m=allMoves[Math.min(moveIdx-1,allMoves.length-1)];
-    mx=m.mx;my=m.my;mz=m.mz;mb=m.mb;mc=m.mc;
+  let mx=0, my=0, mz=0, mb=0, mc=0;
+  if(allMoves.length && moveIdx > 0){
+    const m = allMoves[Math.min(moveIdx-1, allMoves.length-1)];
+    mx=m.mx; my=m.my; mz=m.mz; mb=m.mb; mc=m.mc;
   }
 
-  // Machine origin offset (corrects STL export origin vs machine zero)
-  const ox=parseFloat(document.getElementById('mc-ox').value)||0;
-  const oy=parseFloat(document.getElementById('mc-oy').value)||0;
-  const oz=parseFloat(document.getElementById('mc-oz').value)||0;
-  machineGroup.position.set(ox, oz, -oy); // apply in Three.js coords
+  // Apply origin offset
+  const orig = machineConfig.origin || [0,0,0];
+  machineGroup.position.set(orig[0], orig[2], -orig[1]);
 
-  // Bed side: Z↑, B rotates Y, C IS the bed (rotates on B-local Y)
-  if(mGrp.Z) mGrp.Z.position.set(0, -mz, 0);
-  if(mGrp.B){ mGrp.B.rotation.set(0,0,0); mGrp.B.rotateZ(-mb*Math.PI/180); }
-  if(mGrp.C){ mGrp.C.rotation.set(0,0,0); mGrp.C.rotateY(mc*Math.PI/180); }
+  // Traverse groups and apply axis motion
+  (machineConfig.groups||[]).forEach(g=>{
+    const grp = mGrp[g.id];
+    if(!grp) return;
+    const pivGrp = mGrp[g.id+'__pivot'];
+    const target = pivGrp || grp; // translate the pivot wrapper if it exists
 
-  // Toolhead side: Y translates in -Z, X carries toolhead
-  if(mGrp.Y) mGrp.Y.position.set(0, 0, -my);
-  if(mGrp.X) mGrp.X.position.set(mx, 0, 0);
-}
-
-function applyMachineAppearance(){
-  MACHINE_PARTS.forEach(name=>{
-    if(!mGrp[name]) return;
-    const op  = parseFloat(document.getElementById(`mc-${name}-op`)?.value ?? 1);
-    const col = document.getElementById(`mc-${name}-col`)?.value ?? '#5577aa';
-    mGrp[name].traverse(c=>{
-      if(!c.isMesh) return;
-      c.material.color.set(col);
-      c.material.opacity=op;
-      c.material.transparent=op<1;
-      c.material.needsUpdate=true;
-    });
+    switch(g.axis){
+      case 'X': target.position.set(mx, 0, 0); break;
+      case 'Y': target.position.set(0, 0, -my); break;
+      case 'Z': target.position.set(0, mz, 0); break;
+      case 'B':
+        grp.rotation.set(0,0,0);
+        grp.rotateZ(-mb * Math.PI/180);
+        break;
+      case 'C':
+        grp.rotation.set(0,0,0);
+        grp.rotateY(mc * Math.PI/180);
+        break;
+      default: break; // static
+    }
   });
 }
 
-// Legacy alias
+// Rebuild the machine appearance panel in Settings based on loaded config
+function rebuildMachineAppearancePanel(){
+  const container = document.getElementById('mc-appearance-rows');
+  if(!container || !machineConfig) return;
+  container.innerHTML = '';
+  (machineConfig.groups||[]).forEach(g=>{
+    const col = g.color || AXIS_COLORS[g.axis] || '#5577aa';
+    const op  = g.opacity !== undefined ? g.opacity : 1;
+    container.insertAdjacentHTML('beforeend', `
+      <span class="s-label">${g.id}${g.axis?' ('+g.axis+')':''}</span>
+      <input class="s-color" id="mc-${g.id}-col" type="color" value="${col}"
+        onchange="setGroupAppearance('${g.id}',this.value,null)">
+      <input type="range" class="s-mach-op" id="mc-${g.id}-op" min="0" max="1" step="0.05" value="${op}"
+        oninput="setGroupAppearance('${g.id}',null,parseFloat(this.value))">
+    `);
+  });
+}
+
+function setGroupAppearance(id, color, opacity){
+  const grp = mGrp[id];
+  if(!grp) return;
+  grp.traverse(c=>{
+    if(!c.isMesh) return;
+    if(color !== null) c.material.color.set(color);
+    if(opacity !== null){ c.material.opacity=opacity; c.material.transparent=opacity<1; }
+    c.material.needsUpdate = true;
+  });
+  // Update config
+  if(machineConfig){
+    const g = (machineConfig.groups||[]).find(x=>x.id===id);
+    if(g){ if(color!==null) g.color=color; if(opacity!==null) g.opacity=opacity; }
+  }
+}
+
+// Legacy stubs for compatibility
+function applyMachineConfig(cfg){ /* handled in loadMachine now */ }
+function applyMachineAppearance(){ rebuildMachineAppearancePanel(); }
 function setMachineOpacity(val){
-  MACHINE_PARTS.forEach(name=>{
-    if(!mGrp[name]) return;
-    mGrp[name].traverse(c=>{if(c.isMesh){c.material.opacity=val;c.material.transparent=val<1;}});
-  });
+  if(!machineConfig) return;
+  (machineConfig.groups||[]).forEach(g=>setGroupAppearance(g.id, null, val));
 }
-
 // ── Settings modal — wire up apply button and per-part sliders ──────────
 document.getElementById('settingsBtn').addEventListener('click',()=>document.getElementById('settings-overlay').classList.add('open'));
 document.getElementById('settingsClose').addEventListener('click',()=>document.getElementById('settings-overlay').classList.remove('open'));
@@ -4427,6 +4630,239 @@ function syncJogFromMove(m){
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// MACHINE BUILDER
+// ═══════════════════════════════════════════════════════════════════════════
+
+let mbGroups = [
+  { id:'base',    parent:null,     axis:null, stl:'base.stl',    pivot:[0,0,0], color:'#4a6080', opacity:0.2 },
+  { id:'x_slide', parent:'base',   axis:'X',  stl:'x_slide.stl', pivot:[0,0,0], color:'#5577aa', opacity:1   },
+  { id:'y_slide', parent:'base',   axis:'Y',  stl:'y_slide.stl', pivot:[0,0,0], color:'#5577aa', opacity:1   },
+  { id:'z_slide', parent:'base',   axis:'Z',  stl:'z_slide.stl', pivot:[0,0,0], color:'#5577aa', opacity:1   },
+  { id:'c_table', parent:'y_slide',axis:'C',  stl:'c_table.stl', pivot:[0,0,0], color:'#3a6a5a', opacity:1   },
+  { id:'b_tilt',  parent:'c_table',axis:'B',  stl:'b_tilt.stl',  pivot:[0,-110,0],color:'#6688bb',opacity:1  },
+  { id:'spindle', parent:'z_slide',axis:null, stl:'spindle.stl', pivot:[0,0,0], color:'#aa6633', opacity:1   },
+];
+let mbSelectedId = null;
+
+function openMachineBuilder(){
+  if(machineConfig && machineConfig.groups){
+    mbGroups = machineConfig.groups.map(g=>({...g, pivot:(g.pivot||[0,0,0]).slice()}));
+    document.getElementById('mb-name').value = machineConfig.name || currentMachineName || '';
+    const orig = machineConfig.origin||[0,0,0];
+    document.getElementById('mb-ox').value=orig[0];
+    document.getElementById('mb-oy').value=orig[1];
+    document.getElementById('mb-oz').value=orig[2];
+    if(machineConfig.limits){
+      ['x','y','z','b','c'].forEach(ax=>{
+        const lim=machineConfig.limits[ax];
+        if(lim){ document.getElementById('mb-lim-'+ax+'-min').value=lim[0]; document.getElementById('mb-lim-'+ax+'-max').value=lim[1]; }
+      });
+    }
+  }
+  document.getElementById('mb-machine-name-display').textContent =
+    machineConfig?(machineConfig.name||currentMachineName||'Loaded'):'New machine';
+  mbSelectedId=null;
+  renderMbGroupList();
+  renderMbDetail(null);
+  document.getElementById('mb-overlay').classList.add('open');
+}
+function closeMachineBuilder(){
+  document.getElementById('mb-overlay').classList.remove('open');
+}
+
+document.getElementById('machineBuilderBtn').addEventListener('click', openMachineBuilder);
+document.getElementById('mbClose').addEventListener('click', closeMachineBuilder);
+document.getElementById('mb-overlay').addEventListener('click', e=>{ if(e.target===e.currentTarget) closeMachineBuilder(); });
+
+function renderMbGroupList(){
+  const list=document.getElementById('mb-group-list');
+  list.innerHTML='';
+  mbGroups.forEach(g=>{
+    const row=document.createElement('div');
+    row.className='mb-group-row'+(g.id===mbSelectedId?' selected':'');
+    row.dataset.id=g.id;
+    const axCls=g.axis?` ${g.axis}`:'';
+    row.innerHTML=`
+      <div style="width:12px;height:12px;border-radius:2px;background:${g.color||'#888'};flex-shrink:0;border:1px solid rgba(0,0,0,0.2);"></div>
+      <span class="mb-group-id">${g.id}</span>
+      <span class="mb-group-axis${axCls}">${g.axis||'—'}</span>
+      <span class="mb-group-stl">${g.stl||'no STL'}</span>
+      <span style="font-size:10px;color:var(--text3);">${g.parent||'root'}</span>
+      <button class="mb-del" onclick="mbDeleteGroup('${g.id}');event.stopPropagation()">×</button>
+    `;
+    row.addEventListener('click',()=>{ mbSelectedId=g.id; renderMbGroupList(); renderMbDetail(g); });
+    list.appendChild(row);
+  });
+}
+
+function renderMbDetail(g){
+  const title=document.getElementById('mb-detail-title');
+  const body=document.getElementById('mb-detail-body');
+  if(!g){ title.textContent='Select a group'; body.innerHTML=''; return; }
+  title.textContent='Edit: '+g.id;
+  const parentOpts=['(root)',...mbGroups.filter(x=>x.id!==g.id).map(x=>x.id)];
+  const axisOpts=['(static)','X','Y','Z','B','C'];
+  body.innerHTML=`
+    <div class="mb-field"><label>Group ID</label>
+      <input id="mbd-id" type="text" value="${g.id}" oninput="mbSetField('${g.id}','id',this.value)"></div>
+    <div class="mb-field"><label>Parent</label>
+      <select id="mbd-parent" onchange="mbSetField('${g.id}','parent',this.value==='(root)'?null:this.value)">
+        ${parentOpts.map(p=>`<option${(g.parent||'(root)')===p?' selected':''}>${p}</option>`).join('')}
+      </select></div>
+    <div class="mb-field"><label>Axis</label>
+      <select id="mbd-axis" onchange="mbSetField('${g.id}','axis',this.value==='(static)'?null:this.value)">
+        ${axisOpts.map(a=>`<option${(g.axis||'(static)')===a?' selected':''}>${a}</option>`).join('')}
+      </select></div>
+    <div class="mb-field"><label>STL filename</label>
+      <input type="text" value="${g.stl||''}" placeholder="e.g. base.stl"
+        oninput="mbSetField('${g.id}','stl',this.value)"></div>
+    <div class="mb-field"><label>Pivot (rotation center, mm XYZ)</label>
+      <div class="mb-pivot-row">
+        <input type="number" step="1" value="${g.pivot[0]||0}" oninput="mbSetPivot('${g.id}',0,parseFloat(this.value)||0)">
+        <input type="number" step="1" value="${g.pivot[1]||0}" oninput="mbSetPivot('${g.id}',1,parseFloat(this.value)||0)">
+        <input type="number" step="1" value="${g.pivot[2]||0}" oninput="mbSetPivot('${g.id}',2,parseFloat(this.value)||0)">
+      </div></div>
+    <div class="mb-field" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+      <div><label>Color</label>
+        <input type="color" value="${g.color||'#5577aa'}" style="width:100%;height:28px;border:1px solid var(--border);padding:1px;"
+          oninput="mbSetField('${g.id}','color',this.value)"></div>
+      <div><label>Opacity</label>
+        <input type="range" min="0" max="1" step="0.05" value="${g.opacity??1}"
+          oninput="mbSetField('${g.id}','opacity',parseFloat(this.value));this.nextElementSibling.textContent=Math.round(this.value*100)+'%'">
+        <span style="font-family:var(--mono);font-size:10px;">${Math.round((g.opacity??1)*100)}%</span></div>
+    </div>
+  `;
+}
+
+function mbSetField(id,field,value){
+  const g=mbGroups.find(x=>x.id===id);
+  if(!g) return;
+  if(field==='id'){
+    if(value&&value!==id){
+      mbGroups.forEach(x=>{ if(x.parent===id) x.parent=value; });
+      g.id=value; mbSelectedId=value;
+      renderMbGroupList(); renderMbDetail(g);
+    }
+    return;
+  }
+  g[field]=value;
+  renderMbGroupList();
+}
+function mbSetPivot(id,axis,val){ const g=mbGroups.find(x=>x.id===id); if(g) g.pivot[axis]=val; }
+function mbDeleteGroup(id){
+  if(mbGroups.length<=1){ alert('Cannot delete the last group.'); return; }
+  mbGroups=mbGroups.filter(x=>x.id!==id);
+  mbGroups.forEach(g=>{ if(g.parent===id) g.parent=null; });
+  if(mbSelectedId===id){ mbSelectedId=null; renderMbDetail(null); }
+  renderMbGroupList();
+}
+
+document.getElementById('mb-add-group-btn').addEventListener('click',()=>{
+  const newId='group_'+(mbGroups.length+1);
+  mbGroups.push({id:newId,parent:mbGroups[mbGroups.length-1]?.id||null,axis:null,
+    stl:newId+'.stl',pivot:[0,0,0],color:'#5577aa',opacity:1});
+  mbSelectedId=newId;
+  renderMbGroupList();
+  renderMbDetail(mbGroups[mbGroups.length-1]);
+});
+
+function mbBuildJson(){
+  const name=document.getElementById('mb-name').value||'My CNC Machine';
+  const ox=parseFloat(document.getElementById('mb-ox').value)||0;
+  const oy=parseFloat(document.getElementById('mb-oy').value)||0;
+  const oz=parseFloat(document.getElementById('mb-oz').value)||0;
+  const limits={};
+  ['x','y','z','b','c'].forEach(ax=>{
+    const mn=parseFloat(document.getElementById('mb-lim-'+ax+'-min').value);
+    const mx2=parseFloat(document.getElementById('mb-lim-'+ax+'-max').value);
+    if(!isNaN(mn)&&!isNaN(mx2)) limits[ax]=[mn,mx2];
+  });
+  return {name,groups:mbGroups.map(g=>({...g})),origin:[ox,oy,oz],limits};
+}
+
+document.getElementById('mb-export-btn').addEventListener('click',()=>{
+  const json=JSON.stringify(mbBuildJson(),null,2);
+  const a=document.createElement('a');
+  a.href='data:application/json,'+encodeURIComponent(json);
+  a.download='machine.json'; a.click();
+});
+
+document.getElementById('mb-load-btn').addEventListener('click',()=>document.getElementById('mb-import-file').click());
+document.getElementById('mb-import-file').addEventListener('change',function(){
+  const f=this.files[0]; if(!f) return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try{
+      const data=JSON.parse(e.target.result);
+      if(data.groups) mbGroups=data.groups.map(g=>({...g,pivot:(g.pivot||[0,0,0])}));
+      document.getElementById('mb-name').value=data.name||'';
+      const orig=data.origin||[0,0,0];
+      document.getElementById('mb-ox').value=orig[0];
+      document.getElementById('mb-oy').value=orig[1];
+      document.getElementById('mb-oz').value=orig[2];
+      if(data.limits) ['x','y','z','b','c'].forEach(ax=>{
+        if(data.limits[ax]){
+          document.getElementById('mb-lim-'+ax+'-min').value=data.limits[ax][0];
+          document.getElementById('mb-lim-'+ax+'-max').value=data.limits[ax][1];
+        }
+      });
+      mbSelectedId=null; renderMbGroupList(); renderMbDetail(null);
+      document.getElementById('mb-machine-name-display').textContent=data.name||'Imported';
+    } catch(err){ alert('JSON parse error: '+err.message); }
+  };
+  reader.readAsText(f); this.value='';
+});
+
+document.getElementById('mb-apply-btn').addEventListener('click',()=>{
+  const cfg=mbBuildJson();
+  if(cfg.limits) ['x','y','z','b','c'].forEach(ax=>{
+    if(cfg.limits[ax]){
+      const a=document.getElementById('lim-'+ax+'min'); if(a) a.value=cfg.limits[ax][0];
+      const b=document.getElementById('lim-'+ax+'max'); if(b) b.value=cfg.limits[ax][1];
+    }
+  });
+  machineConfig=cfg;
+  if(currentMachineName){
+    // Reload STLs with new chain
+    disposeMachine();
+    machineConfig=cfg;
+    const groups=cfg.groups||[];
+    groups.forEach(g=>{
+      const grp=new THREE.Group(); grp.name=g.id;
+      if(g.pivot&&(g.pivot[0]||g.pivot[1]||g.pivot[2])){
+        const piv=new THREE.Group(); piv.name=g.id+'_pivot';
+        piv.position.set(g.pivot[0],g.pivot[2],-g.pivot[1]); piv.add(grp);
+        mGrp[g.id+'__pivot']=piv;
+      }
+      mGrp[g.id]=grp;
+    });
+    groups.forEach(g=>{
+      const top=mGrp[g.id+'__pivot']||mGrp[g.id];
+      if(g.parent&&mGrp[g.parent]) mGrp[g.parent].add(top);
+      else machineGroup.add(top);
+    });
+    if(!machineGroup.parent) rootGroup.add(machineGroup);
+    machineGroup.visible=true;
+    const loader=new THREE.STLLoader();
+    const base=`${MACHINES_RAW}/${encodeURIComponent(currentMachineName)}`;
+    groups.filter(g=>g.stl).forEach(g=>{
+      loader.load(`${base}/${encodeURIComponent(g.stl)}`,geo=>{
+        const mesh=new THREE.Mesh(geo,machMat(g.color||'#5577aa',g.opacity??1));
+        mesh.rotation.x=-Math.PI/2; mGrp[g.id].add(mesh);
+      },null,()=>{});
+    });
+    machineLoaded=true;
+    rebuildMachineAppearancePanel();
+    updateMachine(0);
+    closeMachineBuilder();
+    document.getElementById('tb-status').textContent='Machine rebuilt';
+    setTimeout(()=>document.getElementById('tb-status').textContent='',2000);
+  } else {
+    alert('Config saved. Select a machine from the dropdown to load its STLs, or push machine.json to your repo.');
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
 // TOOL TABLE
 // Stores tool geometry + holder geometry per T number.
 // applyTool(t) updates the 3D endmill, the toolbar badge, and the settings
@@ -5034,55 +5470,7 @@ function collectMachineConfig() {
   };
 }
 
-function applyMachineConfig(cfg) {
-  if(!cfg || cfg._version !== 1) { alert('Invalid or incompatible machine.json'); return; }
-  const set = (id, v) => { const el=document.getElementById(id); if(!el) return; el.type==='checkbox' ? el.checked=v : el.value=v; };
-
-  const bp = cfg.buildplate || {};
-  set('s-bp-w', bp.w); set('s-bp-d', bp.d); set('s-bp-t', bp.t);
-  set('s-bp-col', bp.color); set('s-bp-vis', bp.visible);
-  document.getElementById('chip-bp')?.classList.toggle('on', !!bp.visible);
-
-  const nz = cfg.nozzle || {};
-  set('s-nz-tip', nz.tip); set('s-nz-base', nz.base);
-  set('s-nz-ang', nz.angle); set('s-nz-len', nz.length);
-  set('s-nz-col', nz.color); set('s-nz-vis', nz.visible);
-  document.getElementById('chip-nz')?.classList.toggle('on', !!nz.visible);
-
-  const lim = cfg.limits || {};
-  ['x','y','z','b','c'].forEach(ax => {
-    if(lim[ax]) { set('lim-'+ax+'min', lim[ax].min); set('lim-'+ax+'max', lim[ax].max); }
-  });
-
-  const mo = cfg.machineOffset || {};
-  set('mc-ox', mo.x ?? 0); set('mc-oy', mo.y ?? 0); set('mc-oz', mo.z ?? 0);
-
-  const ma = cfg.machineAppearance || {};
-  ['Frame','Z','B','C','Y','X'].forEach(p => {
-    if(ma[p]) { set('mc-'+p+'-col', ma[p].color); set('mc-'+p+'-op', ma[p].opacity); }
-  });
-
-  if(cfg.nozzleDiameter != null) {
-    set('nozzle', cfg.nozzleDiameter);
-    set('mob-nozzle', cfg.nozzleDiameter);
-  }
-
-  if(cfg.collisionProxies) {
-    collProxies = cfg.collisionProxies.map(p => ({...p, id: nextProxyId++}));
-    rebuildProxyWireframes();
-    renderProxyList();
-  }
-  if(cfg.collisionEnabled != null)   set('coll-enabled',     cfg.collisionEnabled);
-  if(cfg.collisionShowProxy != null) set('coll-show-proxies', cfg.collisionShowProxy);
-  if(cfg.collisionPrintMesh != null) set('coll-print-enabled', cfg.collisionPrintMesh);
-
-  // Apply all the visual changes
-  buildBuildplate();
-  buildNozzle();
-  checkLimits();
-  applyMachineAppearance();
-  updateMachine(0);
-}
+// (applyMachineConfig handled by loadMachine above)
 
 document.getElementById('s-export-btn').addEventListener('click', () => {
   const cfg = collectMachineConfig();
