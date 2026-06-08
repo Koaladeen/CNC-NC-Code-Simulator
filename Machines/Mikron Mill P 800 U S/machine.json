@@ -1,0 +1,76 @@
+{
+  "name": "My CNC Machine",
+  "origin": [0, 0, 0],
+  "limits": {
+    "x": [-400, 400],
+    "y": [-300, 300],
+    "z": [-500, 0],
+    "b": [-30, 110],
+    "c": [-360, 360]
+  },
+  "groups": [
+    {
+      "id": "base",
+      "parent": null,
+      "axis": null,
+      "stl": "base.stl",
+      "pivot": [0, 0, 0],
+      "color": "#4a6080",
+      "opacity": 0.2
+    },
+    {
+      "id": "x_slide",
+      "parent": "base",
+      "axis": "X",
+      "stl": "x_slide.stl",
+      "pivot": [0, 0, 0],
+      "color": "#5577aa",
+      "opacity": 1
+    },
+    {
+      "id": "y_slide",
+      "parent": "base",
+      "axis": "Y",
+      "stl": "y_slide.stl",
+      "pivot": [0, 0, 0],
+      "color": "#5577aa",
+      "opacity": 1
+    },
+    {
+      "id": "z_slide",
+      "parent": "base",
+      "axis": "Z",
+      "stl": "z_slide.stl",
+      "pivot": [0, 0, 0],
+      "color": "#5577aa",
+      "opacity": 1
+    },
+    {
+      "id": "c_table",
+      "parent": "y_slide",
+      "axis": "C",
+      "stl": "c_table.stl",
+      "pivot": [0, 0, 0],
+      "color": "#3a6a5a",
+      "opacity": 1
+    },
+    {
+      "id": "b_tilt",
+      "parent": "c_table",
+      "axis": "B",
+      "stl": "b_tilt.stl",
+      "pivot": [0, -110, 0],
+      "color": "#6688bb",
+      "opacity": 1
+    },
+    {
+      "id": "spindle",
+      "parent": "z_slide",
+      "axis": null,
+      "stl": "spindle.stl",
+      "pivot": [0, 0, 0],
+      "color": "#aa6633",
+      "opacity": 1
+    }
+  ]
+}
