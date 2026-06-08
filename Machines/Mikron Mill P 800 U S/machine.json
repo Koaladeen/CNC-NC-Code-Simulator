@@ -12,7 +12,9 @@
         0
       ],
       "color": "#4a6080",
-      "opacity": 0.2
+      "opacity": 0.2,
+      "spindle": false,
+      "stockParent": false
     },
     {
       "id": "x_slide",
@@ -25,7 +27,9 @@
         0
       ],
       "color": "#5577aa",
-      "opacity": 1
+      "opacity": 1,
+      "spindle": false,
+      "stockParent": false
     },
     {
       "id": "y_slide",
@@ -38,7 +42,9 @@
         0
       ],
       "color": "#5577aa",
-      "opacity": 1
+      "opacity": 1,
+      "spindle": false,
+      "stockParent": false
     },
     {
       "id": "z_slide",
@@ -51,7 +57,17 @@
         0
       ],
       "color": "#5577aa",
-      "opacity": 1
+      "opacity": 1,
+      "spindle": true,
+      "toolMount": {
+        "x": 0,
+        "y": 0,
+        "z": 0,
+        "flipX": false,
+        "flipY": false,
+        "flipZ": true
+      },
+      "stockParent": false
     },
     {
       "id": "c_table",
@@ -64,7 +80,9 @@
         0
       ],
       "color": "#3a6a5a",
-      "opacity": 1
+      "opacity": 1,
+      "spindle": false,
+      "stockParent": true
     },
     {
       "id": "a",
@@ -77,7 +95,9 @@
         0
       ],
       "color": "#6688bb",
-      "opacity": 1
+      "opacity": 1,
+      "spindle": false,
+      "stockParent": false
     }
   ],
   "origin": [
