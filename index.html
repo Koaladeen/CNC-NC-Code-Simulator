@@ -517,7 +517,86 @@
   .s-mach-op::-webkit-slider-thumb { -webkit-appearance: none; width: 10px; height: 18px; border-radius: 2px; background: var(--ui-bg1); cursor: pointer; border: 1px solid var(--border-hi); }
 
   /* ─────────────────────────────────────────────────────────────────────
-     MOBILE  (≤900px)
+     TOOL TABLE MODAL
+     ──────────────────────────────────────────────────────────────────── */
+  #tool-overlay { z-index: 150; }
+  #tool-modal { width: 700px; max-width: 96vw; }
+
+  #tool-table-wrap { overflow-x: auto; }
+  #tool-table {
+    width: 100%; border-collapse: collapse;
+    font-family: var(--mono); font-size: 11px;
+  }
+  #tool-table th {
+    background: var(--ui-bg1); color: var(--text2);
+    font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase;
+    padding: 5px 7px; border-bottom: 2px solid var(--border);
+    text-align: left; white-space: nowrap;
+  }
+  #tool-table td {
+    padding: 3px 4px; border-bottom: 1px solid var(--border-lt);
+    vertical-align: middle;
+  }
+  #tool-table tr.tool-active td { background: var(--accent-dim); }
+  #tool-table tr:hover td { background: var(--ui-bg1); }
+  #tool-table tr.tool-active:hover td { background: rgba(26,95,168,0.18); }
+
+  .tt-inp {
+    background: #fff; border: 1px solid var(--border);
+    color: var(--text0); font-family: var(--mono); font-size: 11px;
+    padding: 3px 5px; width: 100%; box-sizing: border-box; border-radius: 0;
+  }
+  .tt-inp:focus { outline: 1px solid var(--accent); }
+  .tt-inp.num { text-align: right; }
+  .tt-sel { width: 100%; font-size: 11px; font-family: var(--mono); background: #fff; border: 1px solid var(--border); padding: 3px 4px; color: var(--text0); }
+
+  .tt-tnum {
+    font-weight: 700; color: var(--accent); font-size: 12px;
+    min-width: 28px; text-align: center;
+  }
+  .tt-active-dot {
+    display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+    background: var(--green); margin-right: 3px; vertical-align: middle;
+    opacity: 0;
+  }
+  tr.tool-active .tt-active-dot { opacity: 1; }
+
+  .tt-del {
+    background: none; border: none; color: var(--text3);
+    cursor: pointer; font-size: 15px; padding: 0 3px; line-height: 1;
+  }
+  .tt-del:hover { color: var(--red); }
+
+  .tt-use {
+    background: var(--ui-bg1); border: 1px solid var(--border);
+    color: var(--text1); font-family: var(--mono); font-size: 9px;
+    padding: 3px 7px; cursor: pointer; white-space: nowrap; border-radius: 2px;
+    letter-spacing: 0.05em;
+  }
+  .tt-use:hover { background: var(--accent-dim); color: var(--accent); border-color: var(--accent); }
+
+  #tool-footer { display: flex; gap: 6px; padding: 10px 16px; border-top: 1px solid var(--border); background: var(--ui-bg1); flex-wrap: wrap; }
+  #tool-footer button { flex: 1; min-width: 100px; }
+
+  #tb-tool-badge {
+    display: none; align-items: center; gap: 5px;
+    font-family: var(--mono); font-size: 10px; color: var(--text1);
+    background: var(--ui-bg0); border: 1px solid var(--border);
+    padding: 3px 9px; letter-spacing: 0.05em; cursor: pointer;
+  }
+  #tb-tool-badge:hover { background: var(--ui-bg2); }
+  #tb-tool-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
+  #tb-tool-badge.visible { display: flex; }
+
+  /* Holder section inside modal */
+  .tt-holder-row { background: var(--ui-bg0); }
+  .tt-holder-row td { padding: 2px 4px 4px 18px; }
+
+  /* ─────────────────────────────────────────────────────────────────────
+     END TOOL TABLE CSS
+     ──────────────────────────────────────────────────────────────────── */
+
+  /* ─────────────────────────────────────────────────────────────────────
      Desktop side panels are hidden; replaced by a vertical dock strip on
      the right edge and slide-in drawers.  See mobile drawer system in JS.
      ──────────────────────────────────────────────────────────────────── */
@@ -797,9 +876,14 @@
     <span id="tb-status"></span>
 
     <div class="tb-group" style="border-left:1px solid var(--border);border-right:none;">
+      <button class="tb-btn" id="toolBtn">⚒ TOOLS</button>
       <button class="tb-btn" id="settingsBtn">⚙ SETTINGS</button>
       <button class="tb-btn danger" id="collBtn">⬡ COLLISION</button>
       <button class="tb-btn" id="fsBtn" title="Toggle fullscreen">⛶</button>
+    </div>
+    <div id="tb-tool-badge" title="Active tool — click to open tool table">
+      <span class="dot"></span>
+      <span id="tb-tool-label">T1</span>
     </div>
   </div>
 
@@ -1030,6 +1114,52 @@
     </div>
   </div>
 
+  <!-- Tool Table Modal -->
+  <div id="tool-overlay" class="modal-overlay">
+    <div id="tool-modal" class="modal-box">
+      <div class="modal-head">
+        <span class="title">TOOL TABLE</span>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-family:var(--mono);font-size:10px;color:var(--text2);" id="tool-active-info">No active tool</span>
+          <button class="close-btn" id="toolClose">×</button>
+        </div>
+      </div>
+
+      <div class="modal-section" style="padding:8px 0 0;">
+        <div id="tool-table-wrap">
+          <table id="tool-table">
+            <thead>
+              <tr>
+                <th style="width:14px;"></th>
+                <th style="width:32px;">T#</th>
+                <th style="min-width:110px;">Name</th>
+                <th style="width:70px;">Shape</th>
+                <th style="width:56px;">Dia (mm)</th>
+                <th style="width:56px;">Flute L</th>
+                <th style="width:56px;">Shank L</th>
+                <th style="width:56px;">Collar Ø</th>
+                <th style="width:56px;">Holder L</th>
+                <th style="width:48px;"></th>
+              </tr>
+            </thead>
+            <tbody id="tool-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="tool-footer">
+        <button class="tb-btn" id="tool-add-btn" style="flex:1;min-width:80px;">+ Add Tool</button>
+        <button class="h-btn" id="tool-export-btn" style="flex:1;min-width:80px;padding:7px 10px;font-size:10px;">↓ Export JSON</button>
+        <button class="h-btn" id="tool-import-btn" style="flex:1;min-width:80px;padding:7px 10px;font-size:10px;">↑ Import JSON</button>
+        <input type="file" id="tool-import-file" accept=".json" style="display:none">
+      </div>
+      <div style="padding:6px 16px 10px;font-family:var(--mono);font-size:10px;color:var(--text2);line-height:1.6;">
+        Tool changes are detected from <span style="color:var(--ax-x);">T# M6</span> in the G-code and applied automatically during playback.
+        Collar Ø and Holder L define the tool holder cylinder used for collision geometry.
+      </div>
+    </div>
+  </div>
+
   <!-- Body -->
   <div id="body">
 
@@ -1134,7 +1264,7 @@
         <div class="ps-head">MACHINE STATE</div>
         <div class="ps-body">
           <div class="st-row"><span class="st-k">Mode</span><span class="st-v" id="ps-pos" style="color:var(--teal)">—</span></div>
-          <div class="st-row"><span class="st-k">Plane</span><span class="st-v" id="ps-emode" style="color:var(--teal)">—</span></div>
+          <div class="st-row"><span class="st-k">Plane/Tool</span><span class="st-v" id="ps-emode" style="color:var(--teal)">—</span></div>
           <div class="st-row"><span class="st-k">Spindle</span><span class="st-v" id="ps-fan">—</span></div>
           <div class="st-row"><span class="st-k">Coolant</span><span class="st-v" id="ps-hotend">—</span></div>
           <div class="st-row"><span class="st-k">WCS</span><span class="st-v" id="ps-bed">—</span></div>
@@ -1870,6 +2000,8 @@ function parseGcode(text){
   let absXYZ=true;
   let spindle=null, coolant='OFF', wcs='G54';
   let plane='G17'; // XY plane default
+  let pendingT = null; // T word seen but M6 not yet
+  let activeT = null;  // last confirmed tool change
   const result=[];
   for(let li=0;li<lines.length;li++){
     const raw=lines[li].trim();
@@ -1899,8 +2031,20 @@ function parseGcode(text){
     if(/\bM8\b/.test(lu)||/\bM08\b/.test(lu)){coolant='FLOOD';}
     if(/\bM7\b/.test(lu)||/\bM07\b/.test(lu)){coolant='MIST';}
     if(/\bM9\b/.test(lu)||/\bM09\b/.test(lu)){coolant='OFF';}
-    // Skip canned cycles (G80-G89), tool change (M6/T), and other non-motion codes
-    if(/\bG8[0-9]\b/.test(lu)||/\bM6\b/.test(lu)||/\bM06\b/.test(lu)) continue;
+    // Tool change: T# sets pendingT, M6 confirms it
+    const tm = lu.match(/\bT(\d+)\b/);
+    if(tm) pendingT = parseInt(tm[1]);
+    if((/\bM6\b/.test(lu)||/\bM06\b/.test(lu)) && pendingT !== null){
+      activeT = pendingT; pendingT = null;
+      // Insert a zero-length marker move to trigger tool change in playback
+      if(result.length){
+        const prev = result[result.length-1];
+        result.push({...prev, toolChange:activeT, lineNum:li+1, rawLine:raw});
+      }
+      continue;
+    }
+    // Skip canned cycles (G80-G89) and other non-motion codes
+    if(/\bG8[0-9]\b/.test(lu)) continue;
     // Only process G0 and G1 (rapid and feed)
     const isG0=/\bG0\b/.test(lu)||/\bG00\b/.test(lu);
     const isG1=/\bG1\b/.test(lu)||/\bG01\b/.test(lu);
@@ -1924,7 +2068,7 @@ function parseGcode(text){
     const dx2=s1[0]-s0[0],dy2=s1[1]-s0[1],dz2=s1[2]-s0[2];
     if(dx2*dx2+dy2*dy2+dz2*dz2<1e-8) continue;
     result.push({type,s0,s1,mx:x,my:y,mz:z,mb:b,mc:c,me:f,layer:0,lineNum:li+1,rawLine:raw,
-      absXYZ,absE:true,hotend:spindle,bedTemp:null,fan:coolant,plane,wcs});
+      absXYZ,absE:true,hotend:spindle,bedTemp:null,fan:coolant,plane,wcs,toolChange:null});
   }
   return result;
 }
@@ -2056,6 +2200,15 @@ function applyProgress(pct){
   updateNozzlePosition(moveIdx);
   updateBedRotation(moveIdx);
   updateMachine(moveIdx);
+  // Auto tool change: find the last tool-change move up to this index
+  if(allMoves.length && moveIdx > 0){
+    for(let i = moveIdx - 1; i >= 0; i--){
+      if(allMoves[i].toolChange !== null && allMoves[i].toolChange !== undefined){
+        if(allMoves[i].toolChange !== activeToolT) applyTool(allMoves[i].toolChange);
+        break;
+      }
+    }
+  }
   // Update violation panel on every frame (scrub, arrow keys, playback)
   if(!isPlaying) checkCurrentMove();
 }
@@ -2108,7 +2261,7 @@ function updateReadout(moveIdx){
   document.getElementById('type-dot').style.background=TYPE_COLORS[m.type]||'';
   // Machine state
   document.getElementById('ps-pos').textContent=m.absXYZ?'G90 Absolute':'G91 Relative';
-  document.getElementById('ps-emode').textContent=m.plane||'G17 XY';
+  document.getElementById('ps-emode').textContent=(m.plane||'G17')+' / T'+activeToolT;
   document.getElementById('ps-fan').textContent=m.hotend!=null?(m.hotend>0?m.hotend+' RPM':'OFF'):'—';
   document.getElementById('ps-hotend').textContent=m.fan||'—';
   document.getElementById('ps-bed').textContent=m.wcs||'G54';
@@ -3807,6 +3960,218 @@ function syncJogFromMove(m){
     if(vEl) vEl.textContent=jogPos[ax.key].toFixed(ax.deg?1:3)+' '+(ax.unit||'');
   });
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TOOL TABLE
+// Stores tool geometry + holder geometry per T number.
+// applyTool(t) updates the 3D endmill, the toolbar badge, and the settings
+// panel values so everything stays in sync.
+// Tool changes are detected by parseGcode (T# + M6 on same or consecutive
+// lines) and stored in each move as .toolChange = { t, name, ... }.
+// During applyProgress the active tool is switched when a tool-change move
+// is reached.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── Default tool table ────────────────────────────────────────────────────
+let toolTable = [
+  { t:1,  name:'6mm Flat Endmill',   shape:'flat',   dia:6,   fluteL:20, shankL:30, collarDia:12, holderL:40 },
+  { t:2,  name:'6mm Ball Endmill',   shape:'ball',   dia:6,   fluteL:20, shankL:30, collarDia:12, holderL:40 },
+  { t:3,  name:'10mm Flat Endmill',  shape:'flat',   dia:10,  fluteL:30, shankL:40, collarDia:16, holderL:50 },
+  { t:4,  name:'3mm Drill',          shape:'drill',  dia:3,   fluteL:25, shankL:30, collarDia:10, holderL:40 },
+  { t:5,  name:'10mm Bull Nose',     shape:'bull',   dia:10,  fluteL:30, shankL:40, collarDia:16, holderL:50 },
+];
+
+let activeToolT = 1;  // currently active T number
+
+const SHAPES = ['flat','ball','bull','drill','taper','chamfer'];
+const SHAPE_MAP = { flat:0, ball:1, bull:2, drill:0, taper:0, chamfer:0 }; // maps to s-nz-ang values
+
+function getToolByT(t){
+  return toolTable.find(tool => tool.t === t) || null;
+}
+
+// Apply a tool to the 3D scene and settings panel
+function applyTool(t){
+  const tool = getToolByT(t);
+  if(!tool) return;
+  activeToolT = t;
+
+  // Update toolbar badge
+  const badge = document.getElementById('tb-tool-badge');
+  const label = document.getElementById('tb-tool-label');
+  if(badge && label){
+    label.textContent = `T${t}: ${tool.name}`;
+    badge.classList.add('visible');
+  }
+
+  // Update tool active info in modal
+  const info = document.getElementById('tool-active-info');
+  if(info) info.textContent = `Active: T${t} — ${tool.name}`;
+
+  // Highlight active row
+  document.querySelectorAll('#tool-tbody tr').forEach(tr => {
+    tr.classList.toggle('tool-active', parseInt(tr.dataset.t) === t);
+  });
+
+  // Push values into settings panel inputs
+  const setVal = (id, v) => { const el = document.getElementById(id); if(el) el.value = v; };
+  setVal('s-nz-tip',  tool.dia);
+  setVal('s-nz-base', tool.fluteL);
+  setVal('s-nz-ang',  SHAPE_MAP[tool.shape] ?? 0);
+  setVal('s-nz-len',  tool.shankL);
+
+  // Also update toolbar diameter input
+  const nozzleEl = document.getElementById('nozzle');
+  if(nozzleEl) nozzleEl.value = tool.dia;
+
+  // Rebuild the 3D endmill geometry
+  buildNozzle();
+}
+
+// ── Tool change detection — called from parseGcode ────────────────────────
+// Returns { t, tool } or null.  Looks for T# M6 on the same line or T# on
+// a preceding line immediately followed by M6.
+function detectToolChange(lu){
+  const tm = lu.match(/\bT(\d+)\b/);
+  const m6 = /\bM6\b|\bM06\b/.test(lu);
+  if(tm && m6) return parseInt(tm[1]);
+  return null;
+}
+
+// ── Modal open/close ──────────────────────────────────────────────────────
+let toolModalOpen = false;
+
+function openToolModal(){
+  document.getElementById('tool-overlay').classList.add('open');
+  toolModalOpen = true;
+  renderToolTable();
+}
+function closeToolModal(){
+  document.getElementById('tool-overlay').classList.remove('open');
+  toolModalOpen = false;
+}
+
+document.getElementById('toolBtn').addEventListener('click', openToolModal);
+document.getElementById('tb-tool-badge').addEventListener('click', openToolModal);
+document.getElementById('toolClose').addEventListener('click', closeToolModal);
+document.getElementById('tool-overlay').addEventListener('click', function(e){
+  if(e.target === this) closeToolModal();
+});
+
+// ── Render tool table rows ────────────────────────────────────────────────
+function renderToolTable(){
+  const tbody = document.getElementById('tool-tbody');
+  if(!tbody) return;
+  tbody.innerHTML = '';
+
+  toolTable.forEach(tool => {
+    const tr = document.createElement('tr');
+    tr.dataset.t = tool.t;
+    if(tool.t === activeToolT) tr.classList.add('tool-active');
+
+    tr.innerHTML = `
+      <td><span class="tt-active-dot"></span></td>
+      <td class="tt-tnum">
+        <input class="tt-inp num" style="width:36px;" type="number" min="1" max="99" value="${tool.t}"
+          onchange="ttSetField(${tool.t},'t',parseInt(this.value)||1)">
+      </td>
+      <td><input class="tt-inp" style="width:120px;" type="text" value="${escHtml(tool.name)}"
+        onchange="ttSetField(${tool.t},'name',this.value)"></td>
+      <td>
+        <select class="tt-sel" onchange="ttSetField(${tool.t},'shape',this.value)">
+          ${SHAPES.map(s=>`<option value="${s}"${s===tool.shape?' selected':''}>${s}</option>`).join('')}
+        </select>
+      </td>
+      <td><input class="tt-inp num" style="width:54px;" type="number" min="0.1" step="0.1" value="${tool.dia}"
+        onchange="ttSetField(${tool.t},'dia',parseFloat(this.value)||1)"></td>
+      <td><input class="tt-inp num" style="width:54px;" type="number" min="1" step="1" value="${tool.fluteL}"
+        onchange="ttSetField(${tool.t},'fluteL',parseFloat(this.value)||10)"></td>
+      <td><input class="tt-inp num" style="width:54px;" type="number" min="1" step="1" value="${tool.shankL}"
+        onchange="ttSetField(${tool.t},'shankL',parseFloat(this.value)||10)"></td>
+      <td><input class="tt-inp num" style="width:54px;" type="number" min="1" step="0.5" value="${tool.collarDia}"
+        onchange="ttSetField(${tool.t},'collarDia',parseFloat(this.value)||10)" title="Holder collar outer diameter"></td>
+      <td><input class="tt-inp num" style="width:54px;" type="number" min="1" step="1" value="${tool.holderL}"
+        onchange="ttSetField(${tool.t},'holderL',parseFloat(this.value)||10)" title="Holder collar length"></td>
+      <td style="white-space:nowrap;">
+        <button class="tt-use" onclick="applyTool(${tool.t})" title="Set as active tool">USE</button>
+        <button class="tt-del" onclick="ttDelete(${tool.t})" title="Delete tool">×</button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+// ── Field edit helper ─────────────────────────────────────────────────────
+function ttSetField(t, field, value){
+  const tool = getToolByT(t);
+  if(!tool) return;
+  // If T number itself changed, check for duplicates
+  if(field === 't'){
+    if(toolTable.some(x => x.t === value && x !== tool)){
+      alert(`T${value} already exists.`); renderToolTable(); return;
+    }
+    tool.t = value;
+    if(activeToolT === t) activeToolT = value;
+    renderToolTable();
+    return;
+  }
+  tool[field] = value;
+  // If this is the active tool, live-update the 3D scene
+  if(tool.t === activeToolT) applyTool(tool.t);
+}
+
+function ttDelete(t){
+  if(toolTable.length <= 1){ alert('Cannot delete the last tool.'); return; }
+  toolTable = toolTable.filter(x => x.t !== t);
+  if(activeToolT === t) applyTool(toolTable[0].t);
+  renderToolTable();
+}
+
+// ── Add tool ─────────────────────────────────────────────────────────────
+document.getElementById('tool-add-btn').addEventListener('click', () => {
+  const maxT = toolTable.reduce((m, x) => Math.max(m, x.t), 0);
+  toolTable.push({
+    t: maxT + 1, name: `Tool ${maxT+1}`, shape: 'flat',
+    dia: 6, fluteL: 20, shankL: 30, collarDia: 12, holderL: 40
+  });
+  renderToolTable();
+  // Scroll to bottom
+  const wrap = document.getElementById('tool-table-wrap');
+  if(wrap) wrap.scrollTop = wrap.scrollHeight;
+});
+
+// ── Export / Import ───────────────────────────────────────────────────────
+document.getElementById('tool-export-btn').addEventListener('click', () => {
+  const json = JSON.stringify({ toolTable }, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = 'tool_table.json'; a.click();
+});
+
+document.getElementById('tool-import-btn').addEventListener('click', () => {
+  document.getElementById('tool-import-file').click();
+});
+
+document.getElementById('tool-import-file').addEventListener('change', function(){
+  const f = this.files[0]; if(!f) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try{
+      const data = JSON.parse(e.target.result);
+      if(Array.isArray(data.toolTable) && data.toolTable.length){
+        toolTable = data.toolTable;
+        renderToolTable();
+        applyTool(toolTable[0].t);
+        document.getElementById('tool-active-info').textContent = `Loaded ${toolTable.length} tools`;
+      } else { alert('Invalid tool table JSON.'); }
+    } catch(err){ alert('JSON parse error: ' + err.message); }
+  };
+  reader.readAsText(f);
+  this.value = '';
+});
+
+// ── Apply active tool on load ─────────────────────────────────────────────
+applyTool(activeToolT);
 
 buildJogPanel();
 setJogEnabled(false); // disabled until playback pauses
