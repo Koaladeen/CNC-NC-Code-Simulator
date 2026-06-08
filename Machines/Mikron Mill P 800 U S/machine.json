@@ -1,0 +1,114 @@
+{
+  "name": "Mikron Mill P 800 U S",
+  "groups": [
+    {
+      "id": "base",
+      "parent": null,
+      "axis": null,
+      "stl": "Frame.stl",
+      "pivot": [
+        0,
+        0,
+        0
+      ],
+      "color": "#4a6080",
+      "opacity": 0.2
+    },
+    {
+      "id": "x_slide",
+      "parent": "base",
+      "axis": "X",
+      "stl": "X.stl",
+      "pivot": [
+        0,
+        0,
+        0
+      ],
+      "color": "#5577aa",
+      "opacity": 1
+    },
+    {
+      "id": "y_slide",
+      "parent": "x_slide",
+      "axis": "Y",
+      "stl": "Y.stl",
+      "pivot": [
+        0,
+        0,
+        0
+      ],
+      "color": "#5577aa",
+      "opacity": 1
+    },
+    {
+      "id": "z_slide",
+      "parent": "y_slide",
+      "axis": "Z",
+      "stl": "Z.stl",
+      "pivot": [
+        0,
+        0,
+        0
+      ],
+      "color": "#5577aa",
+      "opacity": 1
+    },
+    {
+      "id": "c_table",
+      "parent": "A",
+      "axis": "C",
+      "stl": "C.stl",
+      "pivot": [
+        0,
+        0,
+        0
+      ],
+      "color": "#3a6a5a",
+      "opacity": 1
+    },
+    {
+      "id": "A",
+      "parent": "c_table",
+      "axis": "B",
+      "stl": "A.stl",
+      "pivot": [
+        0,
+        -110,
+        0
+      ],
+      "color": "#6688bb",
+      "opacity": 1
+    }
+  ],
+  "origin": [
+    0,
+    0,
+    0
+  ],
+  "limits": {
+    "x": [
+      -450,
+      450
+    ],
+    "y": [
+      -450,
+      450
+    ],
+    "z": [
+      0,
+      600
+    ],
+    "a": [
+      -120,
+      120
+    ],
+    "b": [
+      0,
+      0
+    ],
+    "c": [
+      -360,
+      360
+    ]
+  }
+}
