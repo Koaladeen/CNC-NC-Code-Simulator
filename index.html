@@ -517,6 +517,19 @@
   .s-mach-op::-webkit-slider-thumb { -webkit-appearance: none; width: 10px; height: 18px; border-radius: 2px; background: var(--ui-bg1); cursor: pointer; border: 1px solid var(--border-hi); }
 
   /* ─────────────────────────────────────────────────────────────────────
+     VOXEL STATUS
+     ──────────────────────────────────────────────────────────────────── */
+  #voxel-status {
+    position: absolute; bottom: 52px; left: 50%; transform: translateX(-50%);
+    background: rgba(20,30,40,0.82); color: #c8e0f0;
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em;
+    padding: 4px 14px; border-radius: 2px; pointer-events: none;
+    display: none; white-space: nowrap;
+    border: 1px solid rgba(120,160,200,0.3);
+  }
+  #voxel-status.visible { display: block; }
+
+  /* ─────────────────────────────────────────────────────────────────────
      TOOL TABLE MODAL
      ──────────────────────────────────────────────────────────────────── */
   #tool-overlay { z-index: 150; }
@@ -947,14 +960,14 @@
         <div class="s-row">
           <span class="s-label">Width (X)</span>
           <div style="display:flex;align-items:center;gap:4px;">
-            <input class="s-input" id="s-bp-w" type="number" value="150" min="10" max="1000" step="1">
+            <input class="s-input" id="s-bp-w" type="number" value="150" min="10" max="500" step="1">
             <span style="font-size:11px;color:var(--text2);">mm</span>
           </div>
         </div>
         <div class="s-row">
           <span class="s-label">Depth (Y)</span>
           <div style="display:flex;align-items:center;gap:4px;">
-            <input class="s-input" id="s-bp-d" type="number" value="150" min="10" max="1000" step="1">
+            <input class="s-input" id="s-bp-d" type="number" value="150" min="10" max="500" step="1">
             <span style="font-size:11px;color:var(--text2);">mm</span>
           </div>
         </div>
@@ -965,7 +978,23 @@
             <span style="font-size:11px;color:var(--text2);">mm</span>
           </div>
         </div>
-        <div class="s-row">
+        <div class="modal-section-title" style="margin-top:10px;">Stock Position (machine coords — corner)</div>
+        <div class="s-hint">Bottom-left-front corner of stock block in machine coordinates.</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px 8px;align-items:center;font-size:11px;">
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <span style="color:var(--ax-x);font-family:var(--mono);font-size:9px;">X origin</span>
+            <input class="s-input" id="s-bp-ox" type="number" value="-75" step="1" style="width:100%;">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <span style="color:var(--ax-y);font-family:var(--mono);font-size:9px;">Y origin</span>
+            <input class="s-input" id="s-bp-oy" type="number" value="-75" step="1" style="width:100%;">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <span style="color:var(--ax-z);font-family:var(--mono);font-size:9px;">Z origin</span>
+            <input class="s-input" id="s-bp-oz" type="number" value="0" step="1" style="width:100%;">
+          </div>
+        </div>
+        <div class="s-row" style="margin-top:10px;">
           <span class="s-label">Color</span>
           <input class="s-color" id="s-bp-col" type="color" value="#8a9aaa">
         </div>
@@ -976,6 +1005,14 @@
             <span class="dot" style="background:#8a9aaa"></span>Show
           </label>
         </div>
+        <div class="s-row">
+          <span class="s-label">Voxel sim</span>
+          <label class="chip on" id="chip-voxel" style="margin:0;">
+            <input type="checkbox" id="s-voxel-en" checked>
+            <span class="dot" style="background:var(--green)"></span>Enable
+          </label>
+        </div>
+        <div class="s-hint">Voxels update incrementally during playback. Scrubbing backwards resets.</div>
       </div>
 
       <!-- Cutting Tool -->
@@ -1181,6 +1218,7 @@
         <canvas id="cv"></canvas>
         <div id="corner-tl">DRAG · ORBIT<br>SCROLL · ZOOM<br>RMB · PAN</div>
         <div id="corner-br" id="perfNote"></div>
+        <div id="voxel-status"></div>
       </div>
 
       <!-- Timeline -->
@@ -1586,52 +1624,56 @@ let buildplateMesh=null, nozzleMesh=null;
 const staticGroup=new THREE.Group(); // nozzle lives here — never gets bed rotation
 const bedGroup=new THREE.Group();    // buildplate + toolpath meshes; gets B/C in machine frame
 
-// Build or rebuild stock block
+// Build or rebuild stock block (wireframe + ghost mesh)
 function buildBuildplate(){
   if(buildplateMesh){ bedGroup.remove(buildplateMesh); buildplateMesh.geometry.dispose(); buildplateMesh.material.dispose(); }
-  const w=parseFloat(document.getElementById('s-bp-w').value)||150;
-  const d=parseFloat(document.getElementById('s-bp-d').value)||150;
-  const t=parseFloat(document.getElementById('s-bp-t').value)||50;  // stock height
-  const col=document.getElementById('s-bp-col').value;
-  const vis=document.getElementById('s-bp-vis').checked;
-  // Stock sits on table: bottom at y=0, top at y=t
-  const geo=new THREE.BoxGeometry(w,t,d);
-  const mat=new THREE.MeshLambertMaterial({color:col,transparent:true,opacity:0.22,wireframe:false});
-  buildplateMesh=new THREE.Mesh(geo,mat);
-  buildplateMesh.position.set(0,t/2,0);  // center of box at half-height
-  buildplateMesh.visible=vis;
+  const w  = parseFloat(document.getElementById('s-bp-w').value)  || 150;
+  const d  = parseFloat(document.getElementById('s-bp-d').value)  || 150;
+  const t  = parseFloat(document.getElementById('s-bp-t').value)  || 50;
+  const ox = parseFloat(document.getElementById('s-bp-ox').value) || -75;
+  const oy = parseFloat(document.getElementById('s-bp-oy').value) || -75;
+  const oz = parseFloat(document.getElementById('s-bp-oz').value) || 0;
+  const col = document.getElementById('s-bp-col').value;
+  const vis = document.getElementById('s-bp-vis').checked;
+  const voxEn = document.getElementById('s-voxel-en')?.checked ?? true;
+
+  // Ghost mesh — very transparent when voxels active (they fill the same space)
+  const geo = new THREE.BoxGeometry(w, t, d);
+  const mat = new THREE.MeshLambertMaterial({color:col, transparent:true, opacity: voxEn ? 0.06 : 0.22});
+  buildplateMesh = new THREE.Mesh(geo, mat);
+  // Centre: ox+w/2 in X, oz+t/2 in Y (Three), -(oy+d/2) in Z (Three)
+  buildplateMesh.position.set(ox + w/2, oz + t/2, -(oy + d/2));
+  buildplateMesh.visible = vis;
   bedGroup.add(buildplateMesh);
 
-  // Wireframe outline for stock edges
-  const existing=bedGroup.getObjectByName('bp-grid'); if(existing) bedGroup.remove(existing);
-  const gridGrp=new THREE.Group(); gridGrp.name='bp-grid';
+  // Wireframe outline
+  const existing = bedGroup.getObjectByName('bp-grid'); if(existing) bedGroup.remove(existing);
+  const gridGrp = new THREE.Group(); gridGrp.name = 'bp-grid';
 
-  // 12-edge wireframe box
+  // 12 edges of the stock box (in Three.js coords)
+  const x0=ox, x1=ox+w, y0=oz, y1=oz+t, z0=-(oy), z1=-(oy+d);
   const edges=[
-    // bottom face
-    [[-w/2,0,-d/2],[w/2,0,-d/2]],[[ w/2,0,-d/2],[w/2,0,d/2]],[[w/2,0,d/2],[-w/2,0,d/2]],[[-w/2,0,d/2],[-w/2,0,-d/2]],
-    // top face
-    [[-w/2,t,-d/2],[w/2,t,-d/2]],[[w/2,t,-d/2],[w/2,t,d/2]],[[w/2,t,d/2],[-w/2,t,d/2]],[[-w/2,t,d/2],[-w/2,t,-d/2]],
-    // verticals
-    [[-w/2,0,-d/2],[-w/2,t,-d/2]],[[w/2,0,-d/2],[w/2,t,-d/2]],[[w/2,0,d/2],[w/2,t,d/2]],[[-w/2,0,d/2],[-w/2,t,d/2]],
+    [[x0,y0,z0],[x1,y0,z0]],[[x1,y0,z0],[x1,y0,z1]],[[x1,y0,z1],[x0,y0,z1]],[[x0,y0,z1],[x0,y0,z0]],
+    [[x0,y1,z0],[x1,y1,z0]],[[x1,y1,z0],[x1,y1,z1]],[[x1,y1,z1],[x0,y1,z1]],[[x0,y1,z1],[x0,y1,z0]],
+    [[x0,y0,z0],[x0,y1,z0]],[[x1,y0,z0],[x1,y1,z0]],[[x1,y0,z1],[x1,y1,z1]],[[x0,y0,z1],[x0,y1,z1]],
   ];
-  const edgeMat=new THREE.LineBasicMaterial({color:0x7090a8,transparent:true,opacity:0.7});
+  const edgeMat = new THREE.LineBasicMaterial({color:0x7090a8,transparent:true,opacity:0.7});
   for(const [a,b] of edges){
     const g=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(...a),new THREE.Vector3(...b)]);
     gridGrp.add(new THREE.Line(g,edgeMat));
   }
-  // Grid on bottom face (table surface)
-  const lineMat=new THREE.LineBasicMaterial({color:0x8090a0,transparent:true,opacity:0.25});
+  // Table grid at stock bottom Z
+  const lineMat = new THREE.LineBasicMaterial({color:0x8090a0,transparent:true,opacity:0.2});
   const step=25;
-  for(let xi=-w/2;xi<=w/2+0.01;xi+=step){
-    const g=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(xi,0,-d/2),new THREE.Vector3(xi,0,d/2)]);
+  for(let xi=0; xi<=w+0.01; xi+=step){
+    const g=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(ox+xi,y0,z0),new THREE.Vector3(ox+xi,y0,z1)]);
     gridGrp.add(new THREE.Line(g,lineMat));
   }
-  for(let zi=-d/2;zi<=d/2+0.01;zi+=step){
-    const g=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-w/2,0,zi),new THREE.Vector3(w/2,0,zi)]);
+  for(let di=0; di<=d+0.01; di+=step){
+    const g=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(x0,y0,-(oy+di)),new THREE.Vector3(x1,y0,-(oy+di))]);
     gridGrp.add(new THREE.Line(g,lineMat));
   }
-  gridGrp.visible=vis;
+  gridGrp.visible = vis;
   bedGroup.add(gridGrp);
 }
 
@@ -1761,6 +1803,267 @@ function initStaticScene(){
   rootGroup.add(bedGroup);
   buildBuildplate();
   buildNozzle();
+  // Defer voxel init slightly so Three.js scene is fully ready
+  setTimeout(initVoxelGrid, 100);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// VOXEL ENGINE
+// 1mm³ voxels covering the stock volume. Each voxel is one instance in an
+// InstancedMesh. Removal is done by setting removed voxels' color to fully
+// transparent (opacity trick via transparent material + black+alpha=0 color).
+//
+// stockOX/OY/OZ: machine-coord position of the stock's min-X, min-Y, min-Z corner.
+// voxelGrid: Uint8Array, 1=filled, 0=removed. Index = ix + iy*NX + iz*NX*NY
+// voxelMesh: InstancedMesh — one cube per voxel. Only surface voxels are
+//            rendered (interior hidden for performance).
+//
+// Incremental: lastVoxelMoveIdx tracks how far we've cut. Forward scrub
+// continues from there. Backward scrub triggers a full reset + replay.
+// ═══════════════════════════════════════════════════════════════════════════
+
+let voxelGrid = null;       // Uint8Array
+let voxelMesh = null;       // THREE.InstancedMesh
+let voxelNX=0, voxelNY=0, voxelNZ=0;  // grid dimensions
+let voxelOX=0, voxelOY=0, voxelOZ=0;  // machine-coord origin of stock corner
+let lastVoxelMoveIdx = -1;  // last move index we've processed
+let voxelDirty = false;     // instanceColor needs upload
+
+const VOXEL_RES = 1.0;      // mm per voxel
+const VOXEL_FILLED_COL  = new THREE.Color(0x8a9aaa);
+const VOXEL_REMOVED_COL = new THREE.Color(0x000000);
+const voxelDummy = new THREE.Object3D();
+
+function getStockParams(){
+  const W  = parseFloat(document.getElementById('s-bp-w').value)  || 150;
+  const D  = parseFloat(document.getElementById('s-bp-d').value)  || 150;
+  const H  = parseFloat(document.getElementById('s-bp-t').value)  || 50;
+  const ox = parseFloat(document.getElementById('s-bp-ox').value) || -75;
+  const oy = parseFloat(document.getElementById('s-bp-oy').value) || -75;
+  const oz = parseFloat(document.getElementById('s-bp-oz').value) || 0;
+  return {W, D, H, ox, oy, oz};
+}
+
+function initVoxelGrid(){
+  if(voxelMesh){ bedGroup.remove(voxelMesh); voxelMesh.geometry.dispose(); voxelMesh.material.dispose(); voxelMesh=null; }
+  voxelGrid = null; lastVoxelMoveIdx = -1; voxelDirty = false;
+
+  const en = document.getElementById('s-voxel-en')?.checked ?? true;
+  if(!en){ showVoxelStatus('Voxel simulation disabled'); return; }
+
+  const {W,D,H,ox,oy,oz} = getStockParams();
+  voxelNX = Math.ceil(W / VOXEL_RES);
+  voxelNY = Math.ceil(D / VOXEL_RES);
+  voxelNZ = Math.ceil(H / VOXEL_RES);
+  voxelOX = ox; voxelOY = oy; voxelOZ = oz;
+
+  const total = voxelNX * voxelNY * voxelNZ;
+  if(total > 4000000){ showVoxelStatus(`Stock too large for voxels (${total} voxels). Reduce size or disable.`); return; }
+
+  showVoxelStatus(`Building ${total.toLocaleString()} voxels…`);
+
+  // Defer heavy work to next tick so the status message renders
+  setTimeout(()=>{
+    voxelGrid = new Uint8Array(total);
+    voxelGrid.fill(1); // all filled
+
+    // Build instanced mesh — one cube per voxel
+    const geo = new THREE.BoxGeometry(VOXEL_RES, VOXEL_RES, VOXEL_RES);
+    const mat = new THREE.MeshLambertMaterial({
+      transparent: true, opacity: 1.0, vertexColors: false,
+    });
+    voxelMesh = new THREE.InstancedMesh(geo, mat, total);
+    voxelMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    voxelMesh.count = total;
+
+    // Pre-build all matrices (static — voxels don't move)
+    // and colour array (will be mutated on removal)
+    const colArr = new Float32Array(total * 3);
+    for(let iz=0; iz<voxelNZ; iz++){
+      for(let iy=0; iy<voxelNY; iy++){
+        for(let ix=0; ix<voxelNX; ix++){
+          const idx = ix + iy*voxelNX + iz*voxelNX*voxelNY;
+          // Centre of this voxel in Three.js coords (Y-up: machine Z → Three Y, machine Y → Three -Z)
+          const cx = voxelOX + (ix + 0.5)*VOXEL_RES;
+          const cy = voxelOY + (iy + 0.5)*VOXEL_RES;
+          const cz = voxelOZ + (iz + 0.5)*VOXEL_RES;
+          voxelDummy.position.set(cx, cz, -cy);
+          voxelDummy.updateMatrix();
+          voxelMesh.setMatrixAt(idx, voxelDummy.matrix);
+          colArr[idx*3]   = VOXEL_FILLED_COL.r;
+          colArr[idx*3+1] = VOXEL_FILLED_COL.g;
+          colArr[idx*3+2] = VOXEL_FILLED_COL.b;
+        }
+      }
+    }
+    voxelMesh.instanceMatrix.needsUpdate = true;
+    voxelMesh.instanceColor = new THREE.InstancedBufferAttribute(colArr, 3);
+    voxelMesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
+    bedGroup.add(voxelMesh);
+
+    // Hide the wireframe stock box when voxels are active (they are the stock)
+    if(buildplateMesh) buildplateMesh.visible = false;
+    const grid = bedGroup.getObjectByName('bp-grid');
+    if(grid) grid.visible = true; // keep edge outline
+
+    showVoxelStatus(`${total.toLocaleString()} voxels ready`, 2000);
+  }, 20);
+}
+
+function showVoxelStatus(msg, autohideMs=0){
+  const el = document.getElementById('voxel-status');
+  if(!el) return;
+  el.textContent = msg;
+  el.classList.add('visible');
+  if(autohideMs > 0) setTimeout(()=>el.classList.remove('visible'), autohideMs);
+}
+
+// Convert machine-coord point to voxel grid indices (returns null if outside)
+function machToVoxel(mx, my, mz){
+  const ix = Math.floor((mx - voxelOX) / VOXEL_RES);
+  const iy = Math.floor((my - voxelOY) / VOXEL_RES);
+  const iz = Math.floor((mz - voxelOZ) / VOXEL_RES);
+  if(ix<0||iy<0||iz<0||ix>=voxelNX||iy>=voxelNY||iz>=voxelNZ) return null;
+  return {ix, iy, iz};
+}
+
+function voxelIdx(ix,iy,iz){ return ix + iy*voxelNX + iz*voxelNX*voxelNY; }
+
+// Remove all voxels within tool reach along a move segment.
+// toolRadius, fluteLen: from active tool. bDeg, cDeg: rotation for 5-axis tilt.
+function carveSegment(x0,y0,z0, x1,y1,z1, toolRadius, fluteLen, bDeg, cDeg){
+  if(!voxelGrid || !voxelMesh) return;
+
+  // Tool axis direction in machine coords (unit vector pointing away from tip, i.e. upward along tool)
+  // In machine frame: tool axis is nominally +Z. B tilts around machine Y, C rotates around machine Z.
+  // We use the inverse of the bed rotation to get the tool direction.
+  const bRad = bDeg * Math.PI/180, cRad = cDeg * Math.PI/180;
+  // Tool axis (unit vec in machine coords): start as [0,0,1], apply B then C tilt
+  let ax = Math.sin(-bRad);
+  let ay = 0;
+  let az = Math.cos(-bRad);
+  // apply C rotation around Z: [ax,ay] → [ax cos(c)-ay sin(c), ax sin(c)+ay cos(c)]
+  const ax2 = ax*Math.cos(cRad) - ay*Math.sin(cRad);
+  const ay2 = ax*Math.sin(cRad) + ay*Math.cos(cRad);
+  ax = ax2; ay = ay2; // az unchanged
+
+  // Segment length → sample steps at 0.5*VOXEL_RES
+  const dx=x1-x0, dy=y1-y0, dz=z1-z0;
+  const segLen = Math.sqrt(dx*dx+dy*dy+dz*dz);
+  if(segLen < 0.001) return;
+  const steps = Math.max(1, Math.ceil(segLen / (VOXEL_RES * 0.6)));
+
+  // Bounding box to limit voxel iteration
+  const rad = toolRadius;
+
+  for(let s=0; s<=steps; s++){
+    const t2 = s/steps;
+    const px = x0+dx*t2, py = y0+dy*t2, pz = z0+dz*t2;
+
+    // For each point on segment, carve the cylinder: all voxels within radius
+    // of the tool axis segment from tip (px,py,pz) to tip+(ax,ay,az)*fluteLen
+    // Bounding box of sweep cylinder:
+    const minX = Math.min(px, px+ax*fluteLen) - rad;
+    const maxX = Math.max(px, px+ax*fluteLen) + rad;
+    const minY = Math.min(py, py+ay*fluteLen) - rad;
+    const maxY = Math.max(py, py+ay*fluteLen) + rad;
+    const minZ = Math.min(pz, pz+az*fluteLen) - rad;
+    const maxZ = Math.max(pz, pz+az*fluteLen) + rad;
+
+    const ixMin = Math.max(0, Math.floor((minX - voxelOX)/VOXEL_RES));
+    const ixMax = Math.min(voxelNX-1, Math.ceil((maxX - voxelOX)/VOXEL_RES));
+    const iyMin = Math.max(0, Math.floor((minY - voxelOY)/VOXEL_RES));
+    const iyMax = Math.min(voxelNY-1, Math.ceil((maxY - voxelOY)/VOXEL_RES));
+    const izMin = Math.max(0, Math.floor((minZ - voxelOZ)/VOXEL_RES));
+    const izMax = Math.min(voxelNZ-1, Math.ceil((maxZ - voxelOZ)/VOXEL_RES));
+
+    for(let iz=izMin; iz<=izMax; iz++){
+      for(let iy=iyMin; iy<=iyMax; iy++){
+        for(let ix=ixMin; ix<=ixMax; ix++){
+          const idx = voxelIdx(ix,iy,iz);
+          if(!voxelGrid[idx]) continue; // already removed
+
+          // Voxel centre in machine coords
+          const vx = voxelOX + (ix+0.5)*VOXEL_RES;
+          const vy = voxelOY + (iy+0.5)*VOXEL_RES;
+          const vz = voxelOZ + (iz+0.5)*VOXEL_RES;
+
+          // Distance from voxel centre to the tool axis line segment (tip → tip+axis*fluteLen)
+          const ex=vx-px, ey=vy-py, ez=vz-pz;
+          // Project onto tool axis
+          let proj = ex*ax + ey*ay + ez*az;
+          proj = Math.max(0, Math.min(fluteLen, proj));
+          // Closest point on axis segment
+          const cx2=px+ax*proj, cy2=py+ay*proj, cz2=pz+az*proj;
+          const dist2 = (vx-cx2)*(vx-cx2)+(vy-cy2)*(vy-cy2)+(vz-cz2)*(vz-cz2);
+
+          if(dist2 <= rad*rad){
+            voxelGrid[idx] = 0;
+            voxelMesh.instanceColor.array[idx*3]   = VOXEL_REMOVED_COL.r;
+            voxelMesh.instanceColor.array[idx*3+1] = VOXEL_REMOVED_COL.g;
+            voxelMesh.instanceColor.array[idx*3+2] = VOXEL_REMOVED_COL.b;
+            voxelDirty = true;
+          }
+        }
+      }
+    }
+  }
+}
+
+// Process all cutting moves from startIdx to endIdx (exclusive) and carve voxels
+function voxelProcessMoves(startIdx, endIdx){
+  if(!voxelGrid || !voxelMesh) return;
+  for(let i = startIdx; i < endIdx; i++){
+    const m = allMoves[i];
+    if(!m || m.type === 'travel') continue; // only cutting moves
+    // Get current tool dims
+    const tool = getToolByT(activeToolT);
+    const toolR  = tool ? tool.dia/2    : 3;
+    const fluteL = tool ? tool.fluteL   : 20;
+    // s0/s1 are part-frame coords — convert back to machine coords
+    // allMoves stores machine coords as mx/my/mz; s0/s1 are part frame.
+    // For carving we need machine-frame positions and tool tilt angles.
+    const x0=m.s0[0], y0=-m.s0[2], z0=m.s0[1]; // part→machine (undo toPart approx)
+    // Actually it's cleaner to use mx/my/mz of prev/cur move:
+    const pm = i > 0 ? allMoves[i-1] : m;
+    carveSegment(
+      pm.mx, pm.my, pm.mz,
+      m.mx,  m.my,  m.mz,
+      toolR, fluteL,
+      m.mb,  m.mc
+    );
+  }
+  if(voxelDirty && voxelMesh){
+    voxelMesh.instanceColor.needsUpdate = true;
+    voxelDirty = false;
+  }
+}
+
+// Called from applyProgress — incremental forward, reset on backward
+function voxelUpdate(moveIdx){
+  if(!voxelGrid || !voxelMesh) return;
+  if(moveIdx < lastVoxelMoveIdx){
+    // Scrubbed backward — need full reset and replay
+    voxelGrid.fill(1);
+    const colArr = voxelMesh.instanceColor.array;
+    for(let i=0; i<voxelGrid.length; i++){
+      colArr[i*3]   = VOXEL_FILLED_COL.r;
+      colArr[i*3+1] = VOXEL_FILLED_COL.g;
+      colArr[i*3+2] = VOXEL_FILLED_COL.b;
+    }
+    voxelMesh.instanceColor.needsUpdate = true;
+    lastVoxelMoveIdx = 0;
+    voxelProcessMoves(0, moveIdx);
+  } else if(moveIdx > lastVoxelMoveIdx){
+    voxelProcessMoves(lastVoxelMoveIdx, moveIdx);
+  }
+  lastVoxelMoveIdx = moveIdx;
+}
+
+// Reset voxels completely (called on rebuildAll)
+function voxelReset(){
+  lastVoxelMoveIdx = -1;
+  initVoxelGrid();
 }
 
 // ── Machine STL loader ────────────────────────────────────────────
@@ -1955,11 +2258,12 @@ document.getElementById('settings-overlay').addEventListener('click',e=>{if(e.ta
 document.getElementById('s-apply-btn').addEventListener('click',()=>{
   buildBuildplate();
   buildNozzle();
+  voxelReset(); // reinit voxels with new stock dims/position
   checkLimits();
   document.getElementById('settings-overlay').classList.remove('open');
 });
-// Chip toggles inside modal for bp/nz visibility
-['chip-bp','chip-nz'].forEach(id=>{
+// Chip toggles inside modal for bp/nz/voxel visibility
+['chip-bp','chip-nz','chip-voxel'].forEach(id=>{
   const chip=document.getElementById(id);
   if(!chip) return;
   const cb=chip.querySelector('input');
@@ -2200,6 +2504,8 @@ function applyProgress(pct){
   updateNozzlePosition(moveIdx);
   updateBedRotation(moveIdx);
   updateMachine(moveIdx);
+  // Voxel material removal
+  voxelUpdate(moveIdx);
   // Auto tool change: find the last tool-change move up to this index
   if(allMoves.length && moveIdx > 0){
     for(let i = moveIdx - 1; i >= 0; i--){
@@ -2304,6 +2610,7 @@ function rebuildAll(resetProgress){
   setTimeout(()=>{
     allMoves=parseGcode(cachedText);
     buildMeshes(parseFloat(document.getElementById('nozzle').value)||6.0);
+    voxelReset();
     // Always start at beginning of gcode
     document.getElementById('prog').value=0;
     applyProgress(0);
