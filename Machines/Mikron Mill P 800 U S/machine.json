@@ -16,7 +16,7 @@
     },
     {
       "id": "x_slide",
-      "parent": "base",
+      "parent": "y_slide",
       "axis": "X",
       "stl": "X.stl",
       "pivot": [
@@ -29,7 +29,7 @@
     },
     {
       "id": "y_slide",
-      "parent": "x_slide",
+      "parent": "base",
       "axis": "Y",
       "stl": "Y.stl",
       "pivot": [
@@ -42,7 +42,7 @@
     },
     {
       "id": "z_slide",
-      "parent": "y_slide",
+      "parent": "x_slide",
       "axis": "Z",
       "stl": "Z.stl",
       "pivot": [
@@ -55,7 +55,7 @@
     },
     {
       "id": "c_table",
-      "parent": "A",
+      "parent": "a",
       "axis": "C",
       "stl": "C.stl",
       "pivot": [
@@ -67,9 +67,9 @@
       "opacity": 1
     },
     {
-      "id": "A",
+      "id": "a",
       "parent": "c_table",
-      "axis": "B",
+      "axis": "A",
       "stl": "A.stl",
       "pivot": [
         0,
