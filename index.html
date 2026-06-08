@@ -1822,16 +1822,20 @@ function initStaticScene(){
 // continues from there. Backward scrub triggers a full reset + replay.
 // ═══════════════════════════════════════════════════════════════════════════
 
-let voxelGrid = null;       // Uint8Array
+let voxelGrid = null;       // Uint8Array — 1=filled, 0=removed
 let voxelMesh = null;       // THREE.InstancedMesh
-let voxelNX=0, voxelNY=0, voxelNZ=0;  // grid dimensions
-let voxelOX=0, voxelOY=0, voxelOZ=0;  // machine-coord origin of stock corner
-let lastVoxelMoveIdx = -1;  // last move index we've processed
-let voxelDirty = false;     // instanceColor needs upload
+let voxelNX=0, voxelNY=0, voxelNZ=0;
+let voxelOX=0, voxelOY=0, voxelOZ=0;
+let lastVoxelMoveIdx = -1;
+// Swap-to-end bookkeeping:
+// voxelInstCount = number of currently visible (filled) voxels = mesh.count
+// voxelIdxToInst[voxelIdx] = current instance slot index for this voxel
+// voxelInstToIdx[slotIdx]  = which voxel is in this slot
+let voxelInstCount = 0;
+let voxelIdxToInst = null; // Int32Array, length = total voxels
+let voxelInstToIdx = null; // Int32Array, length = total voxels
 
-const VOXEL_RES = 1.0;      // mm per voxel
-const VOXEL_FILLED_COL  = new THREE.Color(0x8a9aaa);
-const VOXEL_REMOVED_COL = new THREE.Color(0x000000);
+const VOXEL_RES = 1.0;
 const voxelDummy = new THREE.Object3D();
 
 function getStockParams(){
@@ -1846,7 +1850,8 @@ function getStockParams(){
 
 function initVoxelGrid(){
   if(voxelMesh){ bedGroup.remove(voxelMesh); voxelMesh.geometry.dispose(); voxelMesh.material.dispose(); voxelMesh=null; }
-  voxelGrid = null; lastVoxelMoveIdx = -1; voxelDirty = false;
+  voxelGrid=null; lastVoxelMoveIdx=-1;
+  voxelIdxToInst=null; voxelInstToIdx=null; voxelInstCount=0;
 
   const en = document.getElementById('s-voxel-en')?.checked ?? true;
   if(!en){ showVoxelStatus('Voxel simulation disabled'); return; }
@@ -1855,58 +1860,54 @@ function initVoxelGrid(){
   voxelNX = Math.ceil(W / VOXEL_RES);
   voxelNY = Math.ceil(D / VOXEL_RES);
   voxelNZ = Math.ceil(H / VOXEL_RES);
-  voxelOX = ox; voxelOY = oy; voxelOZ = oz;
+  voxelOX=ox; voxelOY=oy; voxelOZ=oz;
 
   const total = voxelNX * voxelNY * voxelNZ;
-  if(total > 4000000){ showVoxelStatus(`Stock too large for voxels (${total} voxels). Reduce size or disable.`); return; }
+  if(total > 4000000){ showVoxelStatus(`Stock too large (${total.toLocaleString()} voxels). Reduce stock size or disable.`); return; }
 
   showVoxelStatus(`Building ${total.toLocaleString()} voxels…`);
 
-  // Defer heavy work to next tick so the status message renders
   setTimeout(()=>{
     voxelGrid = new Uint8Array(total);
-    voxelGrid.fill(1); // all filled
+    voxelGrid.fill(1);
+    voxelIdxToInst = new Int32Array(total);
+    voxelInstToIdx = new Int32Array(total);
 
-    // Build instanced mesh — one cube per voxel
-    const geo = new THREE.BoxGeometry(VOXEL_RES, VOXEL_RES, VOXEL_RES);
-    const mat = new THREE.MeshLambertMaterial({
-      transparent: true, opacity: 1.0, vertexColors: false,
-    });
+    // Geometry: unit cube, will be scaled/placed via instance matrices
+    const geo = new THREE.BoxGeometry(VOXEL_RES*0.98, VOXEL_RES*0.98, VOXEL_RES*0.98); // slight gap between voxels
+    const col = document.getElementById('s-bp-col').value || '#8a9aaa';
+    const mat = new THREE.MeshLambertMaterial({ color: col });
     voxelMesh = new THREE.InstancedMesh(geo, mat, total);
     voxelMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    voxelInstCount = total;
     voxelMesh.count = total;
 
-    // Pre-build all matrices (static — voxels don't move)
-    // and colour array (will be mutated on removal)
-    const colArr = new Float32Array(total * 3);
+    // Build all instance matrices in natural order
     for(let iz=0; iz<voxelNZ; iz++){
       for(let iy=0; iy<voxelNY; iy++){
         for(let ix=0; ix<voxelNX; ix++){
-          const idx = ix + iy*voxelNX + iz*voxelNX*voxelNY;
-          // Centre of this voxel in Three.js coords (Y-up: machine Z → Three Y, machine Y → Three -Z)
-          const cx = voxelOX + (ix + 0.5)*VOXEL_RES;
-          const cy = voxelOY + (iy + 0.5)*VOXEL_RES;
-          const cz = voxelOZ + (iz + 0.5)*VOXEL_RES;
+          const vidx = ix + iy*voxelNX + iz*voxelNX*voxelNY;
+          // Voxel centre in Three.js coords
+          const cx = voxelOX + (ix+0.5)*VOXEL_RES;
+          const cy = voxelOY + (iy+0.5)*VOXEL_RES;
+          const cz = voxelOZ + (iz+0.5)*VOXEL_RES;
           voxelDummy.position.set(cx, cz, -cy);
+          voxelDummy.rotation.set(0,0,0);
+          voxelDummy.scale.set(1,1,1);
           voxelDummy.updateMatrix();
-          voxelMesh.setMatrixAt(idx, voxelDummy.matrix);
-          colArr[idx*3]   = VOXEL_FILLED_COL.r;
-          colArr[idx*3+1] = VOXEL_FILLED_COL.g;
-          colArr[idx*3+2] = VOXEL_FILLED_COL.b;
+          voxelMesh.setMatrixAt(vidx, voxelDummy.matrix);
+          voxelIdxToInst[vidx] = vidx;
+          voxelInstToIdx[vidx] = vidx;
         }
       }
     }
     voxelMesh.instanceMatrix.needsUpdate = true;
-    voxelMesh.instanceColor = new THREE.InstancedBufferAttribute(colArr, 3);
-    voxelMesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
     bedGroup.add(voxelMesh);
 
-    // Hide the wireframe stock box when voxels are active (they are the stock)
+    // Hide ghost stock mesh (voxels replace it visually)
     if(buildplateMesh) buildplateMesh.visible = false;
-    const grid = bedGroup.getObjectByName('bp-grid');
-    if(grid) grid.visible = true; // keep edge outline
 
-    showVoxelStatus(`${total.toLocaleString()} voxels ready`, 2000);
+    showVoxelStatus(`${total.toLocaleString()} voxels ready`, 2500);
   }, 20);
 }
 
@@ -1918,149 +1919,155 @@ function showVoxelStatus(msg, autohideMs=0){
   if(autohideMs > 0) setTimeout(()=>el.classList.remove('visible'), autohideMs);
 }
 
-// Convert machine-coord point to voxel grid indices (returns null if outside)
-function machToVoxel(mx, my, mz){
+// Remove a single voxel by swapping it with the last active instance
+function removeVoxel(vidx){
+  if(!voxelGrid || !voxelMesh) return;
+  if(!voxelGrid[vidx]) return; // already removed
+  voxelGrid[vidx] = 0;
+
+  const slot = voxelIdxToInst[vidx];
+  const lastSlot = voxelInstCount - 1;
+
+  if(slot !== lastSlot){
+    // Swap this voxel's slot with the last active slot
+    const lastVidx = voxelInstToIdx[lastSlot];
+    // Copy last active instance matrix into this slot
+    const mat4 = new THREE.Matrix4();
+    voxelMesh.getMatrixAt(lastSlot, mat4);
+    voxelMesh.setMatrixAt(slot, mat4);
+    // Update bookkeeping
+    voxelIdxToInst[lastVidx] = slot;
+    voxelInstToIdx[slot] = lastVidx;
+  }
+  // The removed voxel is now in the last slot — decrement count to hide it
+  voxelInstCount--;
+  voxelMesh.count = voxelInstCount;
+  voxelMesh.instanceMatrix.needsUpdate = true;
+}
+
+// Reset all voxels to filled
+function voxelFillAll(){
+  if(!voxelGrid || !voxelMesh) return;
+  voxelGrid.fill(1);
+  // Rebuild instance order to natural order
+  const total = voxelNX * voxelNY * voxelNZ;
+  for(let i=0; i<total; i++){
+    // Restore matrix at slot i to voxel i's matrix
+    // (recompute from voxel index)
+    const ix = i % voxelNX;
+    const iy = Math.floor(i / voxelNX) % voxelNY;
+    const iz = Math.floor(i / (voxelNX*voxelNY));
+    const cx = voxelOX + (ix+0.5)*VOXEL_RES;
+    const cy = voxelOY + (iy+0.5)*VOXEL_RES;
+    const cz = voxelOZ + (iz+0.5)*VOXEL_RES;
+    voxelDummy.position.set(cx, cz, -cy);
+    voxelDummy.rotation.set(0,0,0);
+    voxelDummy.scale.set(1,1,1);
+    voxelDummy.updateMatrix();
+    voxelMesh.setMatrixAt(i, voxelDummy.matrix);
+    voxelIdxToInst[i] = i;
+    voxelInstToIdx[i] = i;
+  }
+  voxelInstCount = total;
+  voxelMesh.count = total;
+  voxelMesh.instanceMatrix.needsUpdate = true;
+}
+
+function machToVoxelIdx(mx, my, mz){
   const ix = Math.floor((mx - voxelOX) / VOXEL_RES);
   const iy = Math.floor((my - voxelOY) / VOXEL_RES);
   const iz = Math.floor((mz - voxelOZ) / VOXEL_RES);
-  if(ix<0||iy<0||iz<0||ix>=voxelNX||iy>=voxelNY||iz>=voxelNZ) return null;
-  return {ix, iy, iz};
+  if(ix<0||iy<0||iz<0||ix>=voxelNX||iy>=voxelNY||iz>=voxelNZ) return -1;
+  return ix + iy*voxelNX + iz*voxelNX*voxelNY;
 }
 
-function voxelIdx(ix,iy,iz){ return ix + iy*voxelNX + iz*voxelNX*voxelNY; }
-
-// Remove all voxels within tool reach along a move segment.
-// toolRadius, fluteLen: from active tool. bDeg, cDeg: rotation for 5-axis tilt.
 function carveSegment(x0,y0,z0, x1,y1,z1, toolRadius, fluteLen, bDeg, cDeg){
   if(!voxelGrid || !voxelMesh) return;
 
-  // Tool axis direction in machine coords (unit vector pointing away from tip, i.e. upward along tool)
-  // In machine frame: tool axis is nominally +Z. B tilts around machine Y, C rotates around machine Z.
-  // We use the inverse of the bed rotation to get the tool direction.
-  const bRad = bDeg * Math.PI/180, cRad = cDeg * Math.PI/180;
-  // Tool axis (unit vec in machine coords): start as [0,0,1], apply B then C tilt
+  // Tool axis unit vector in machine coords (tilted by B and C)
+  const bRad = bDeg*Math.PI/180, cRad = cDeg*Math.PI/180;
   let ax = Math.sin(-bRad);
   let ay = 0;
   let az = Math.cos(-bRad);
-  // apply C rotation around Z: [ax,ay] → [ax cos(c)-ay sin(c), ax sin(c)+ay cos(c)]
   const ax2 = ax*Math.cos(cRad) - ay*Math.sin(cRad);
   const ay2 = ax*Math.sin(cRad) + ay*Math.cos(cRad);
-  ax = ax2; ay = ay2; // az unchanged
+  ax=ax2; ay=ay2;
 
-  // Segment length → sample steps at 0.5*VOXEL_RES
   const dx=x1-x0, dy=y1-y0, dz=z1-z0;
   const segLen = Math.sqrt(dx*dx+dy*dy+dz*dz);
   if(segLen < 0.001) return;
-  const steps = Math.max(1, Math.ceil(segLen / (VOXEL_RES * 0.6)));
+  const steps = Math.max(1, Math.ceil(segLen / (VOXEL_RES * 0.7)));
 
-  // Bounding box to limit voxel iteration
-  const rad = toolRadius;
+  const rad2 = toolRadius * toolRadius;
 
   for(let s=0; s<=steps; s++){
-    const t2 = s/steps;
-    const px = x0+dx*t2, py = y0+dy*t2, pz = z0+dz*t2;
+    const t = s/steps;
+    const px=x0+dx*t, py=y0+dy*t, pz=z0+dz*t;
 
-    // For each point on segment, carve the cylinder: all voxels within radius
-    // of the tool axis segment from tip (px,py,pz) to tip+(ax,ay,az)*fluteLen
-    // Bounding box of sweep cylinder:
-    const minX = Math.min(px, px+ax*fluteLen) - rad;
-    const maxX = Math.max(px, px+ax*fluteLen) + rad;
-    const minY = Math.min(py, py+ay*fluteLen) - rad;
-    const maxY = Math.max(py, py+ay*fluteLen) + rad;
-    const minZ = Math.min(pz, pz+az*fluteLen) - rad;
-    const maxZ = Math.max(pz, pz+az*fluteLen) + rad;
+    // AABB of the tool cylinder at this position
+    const minX=Math.min(px,px+ax*fluteLen)-toolRadius;
+    const maxX=Math.max(px,px+ax*fluteLen)+toolRadius;
+    const minY=Math.min(py,py+ay*fluteLen)-toolRadius;
+    const maxY=Math.max(py,py+ay*fluteLen)+toolRadius;
+    const minZ=Math.min(pz,pz+az*fluteLen)-toolRadius;
+    const maxZ=Math.max(pz,pz+az*fluteLen)+toolRadius;
 
-    const ixMin = Math.max(0, Math.floor((minX - voxelOX)/VOXEL_RES));
-    const ixMax = Math.min(voxelNX-1, Math.ceil((maxX - voxelOX)/VOXEL_RES));
-    const iyMin = Math.max(0, Math.floor((minY - voxelOY)/VOXEL_RES));
-    const iyMax = Math.min(voxelNY-1, Math.ceil((maxY - voxelOY)/VOXEL_RES));
-    const izMin = Math.max(0, Math.floor((minZ - voxelOZ)/VOXEL_RES));
-    const izMax = Math.min(voxelNZ-1, Math.ceil((maxZ - voxelOZ)/VOXEL_RES));
+    const ixMin=Math.max(0,Math.floor((minX-voxelOX)/VOXEL_RES));
+    const ixMax=Math.min(voxelNX-1,Math.ceil((maxX-voxelOX)/VOXEL_RES));
+    const iyMin=Math.max(0,Math.floor((minY-voxelOY)/VOXEL_RES));
+    const iyMax=Math.min(voxelNY-1,Math.ceil((maxY-voxelOY)/VOXEL_RES));
+    const izMin=Math.max(0,Math.floor((minZ-voxelOZ)/VOXEL_RES));
+    const izMax=Math.min(voxelNZ-1,Math.ceil((maxZ-voxelOZ)/VOXEL_RES));
 
-    for(let iz=izMin; iz<=izMax; iz++){
-      for(let iy=iyMin; iy<=iyMax; iy++){
-        for(let ix=ixMin; ix<=ixMax; ix++){
-          const idx = voxelIdx(ix,iy,iz);
-          if(!voxelGrid[idx]) continue; // already removed
+    for(let iz=izMin;iz<=izMax;iz++){
+      for(let iy=iyMin;iy<=iyMax;iy++){
+        for(let ix=ixMin;ix<=ixMax;ix++){
+          const vidx = ix + iy*voxelNX + iz*voxelNX*voxelNY;
+          if(!voxelGrid[vidx]) continue;
 
-          // Voxel centre in machine coords
-          const vx = voxelOX + (ix+0.5)*VOXEL_RES;
-          const vy = voxelOY + (iy+0.5)*VOXEL_RES;
-          const vz = voxelOZ + (iz+0.5)*VOXEL_RES;
-
-          // Distance from voxel centre to the tool axis line segment (tip → tip+axis*fluteLen)
+          const vx=voxelOX+(ix+0.5)*VOXEL_RES;
+          const vy=voxelOY+(iy+0.5)*VOXEL_RES;
+          const vz=voxelOZ+(iz+0.5)*VOXEL_RES;
           const ex=vx-px, ey=vy-py, ez=vz-pz;
-          // Project onto tool axis
           let proj = ex*ax + ey*ay + ez*az;
           proj = Math.max(0, Math.min(fluteLen, proj));
-          // Closest point on axis segment
           const cx2=px+ax*proj, cy2=py+ay*proj, cz2=pz+az*proj;
-          const dist2 = (vx-cx2)*(vx-cx2)+(vy-cy2)*(vy-cy2)+(vz-cz2)*(vz-cz2);
-
-          if(dist2 <= rad*rad){
-            voxelGrid[idx] = 0;
-            voxelMesh.instanceColor.array[idx*3]   = VOXEL_REMOVED_COL.r;
-            voxelMesh.instanceColor.array[idx*3+1] = VOXEL_REMOVED_COL.g;
-            voxelMesh.instanceColor.array[idx*3+2] = VOXEL_REMOVED_COL.b;
-            voxelDirty = true;
-          }
+          const dist2=(vx-cx2)*(vx-cx2)+(vy-cy2)*(vy-cy2)+(vz-cz2)*(vz-cz2);
+          if(dist2 <= rad2) removeVoxel(vidx);
         }
       }
     }
   }
 }
 
-// Process all cutting moves from startIdx to endIdx (exclusive) and carve voxels
 function voxelProcessMoves(startIdx, endIdx){
   if(!voxelGrid || !voxelMesh) return;
-  for(let i = startIdx; i < endIdx; i++){
-    const m = allMoves[i];
-    if(!m || m.type === 'travel') continue; // only cutting moves
-    // Get current tool dims
+  for(let i=startIdx; i<endIdx; i++){
+    const m=allMoves[i];
+    if(!m || m.type==='travel') continue;
     const tool = getToolByT(activeToolT);
-    const toolR  = tool ? tool.dia/2    : 3;
-    const fluteL = tool ? tool.fluteL   : 20;
-    // s0/s1 are part-frame coords — convert back to machine coords
-    // allMoves stores machine coords as mx/my/mz; s0/s1 are part frame.
-    // For carving we need machine-frame positions and tool tilt angles.
-    const x0=m.s0[0], y0=-m.s0[2], z0=m.s0[1]; // part→machine (undo toPart approx)
-    // Actually it's cleaner to use mx/my/mz of prev/cur move:
-    const pm = i > 0 ? allMoves[i-1] : m;
-    carveSegment(
-      pm.mx, pm.my, pm.mz,
-      m.mx,  m.my,  m.mz,
-      toolR, fluteL,
-      m.mb,  m.mc
-    );
-  }
-  if(voxelDirty && voxelMesh){
-    voxelMesh.instanceColor.needsUpdate = true;
-    voxelDirty = false;
+    const toolR  = tool ? tool.dia/2  : 3;
+    const fluteL = tool ? tool.fluteL : 20;
+    const pm = i>0 ? allMoves[i-1] : m;
+    carveSegment(pm.mx,pm.my,pm.mz, m.mx,m.my,m.mz, toolR,fluteL, m.mb,m.mc);
   }
 }
 
-// Called from applyProgress — incremental forward, reset on backward
 function voxelUpdate(moveIdx){
   if(!voxelGrid || !voxelMesh) return;
   if(moveIdx < lastVoxelMoveIdx){
-    // Scrubbed backward — need full reset and replay
-    voxelGrid.fill(1);
-    const colArr = voxelMesh.instanceColor.array;
-    for(let i=0; i<voxelGrid.length; i++){
-      colArr[i*3]   = VOXEL_FILLED_COL.r;
-      colArr[i*3+1] = VOXEL_FILLED_COL.g;
-      colArr[i*3+2] = VOXEL_FILLED_COL.b;
-    }
-    voxelMesh.instanceColor.needsUpdate = true;
+    // Backward scrub — full reset and replay
+    showVoxelStatus('Resetting voxels…');
+    voxelFillAll();
     lastVoxelMoveIdx = 0;
     voxelProcessMoves(0, moveIdx);
+    showVoxelStatus(`${voxelInstCount.toLocaleString()} voxels remaining`, 1500);
   } else if(moveIdx > lastVoxelMoveIdx){
     voxelProcessMoves(lastVoxelMoveIdx, moveIdx);
   }
   lastVoxelMoveIdx = moveIdx;
 }
 
-// Reset voxels completely (called on rebuildAll)
 function voxelReset(){
   lastVoxelMoveIdx = -1;
   initVoxelGrid();
@@ -2408,7 +2415,7 @@ function buildMeshes(nd){
   const segs5=allMoves.filter(s=>s.type==='e5');
   const segsT=allMoves.filter(s=>s.type==='travel');
 
-  // Cumulative indices
+  // Cumulative indices (by move index, not segment index)
   let n3=0,n5=0,nT=0;
   cum3=new Int32Array(allMoves.length+1);
   cum5=new Int32Array(allMoves.length+1);
@@ -2419,53 +2426,63 @@ function buildMeshes(nd){
     cum3[i+1]=n3;cum5[i+1]=n5;cumT[i+1]=nT;
   }
 
-  const r=nd/2;
-  const cylGeo=new THREE.CylinderGeometry(r,r,1,6,1);
+  // ── CNC: toolpaths as LINE SEGMENTS (not fat extrusion cylinders) ──
+  // Each move becomes two vertices in a BufferGeometry.
+  // We use drawRange to reveal moves incrementally (same as before).
 
-  function makeInstanced(segs,color,visible){
-    if(!segs.length||!visible) return null;
-    const mat=new THREE.MeshLambertMaterial({color,vertexColors:colorByFeed});
-    const mesh=new THREE.InstancedMesh(cylGeo,mat,segs.length);
-    const colors=colorByFeed?new Float32Array(segs.length*3):null;
-    for(let i=0;i<segs.length;i++){
-      const [x0,y0,z0]=segs[i].s0,[x1,y1,z1]=segs[i].s1;
-      const v0=new THREE.Vector3(x0,z0,-y0),v1=new THREE.Vector3(x1,z1,-y1);
-      const len=v0.distanceTo(v1);
-      if(len<0.001){mesh.setMatrixAt(i,new THREE.Matrix4());continue;}
-      dummy.position.copy(v0).lerp(v1,0.5);
-      dummy.scale.set(1,len,1);
-      dummy.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),v1.clone().sub(v0).normalize());
-      dummy.updateMatrix(); mesh.setMatrixAt(i,dummy.matrix);
-      if(colorByFeed){const col=layerColor(segs[i].me||0,maxFeed);colors[i*3]=col.r;colors[i*3+1]=col.g;colors[i*3+2]=col.b;}
+  function makeLineSegs(segs, color, visible){
+    if(!segs.length || !visible) return null;
+    const pts = new Float32Array(segs.length * 6); // 2 verts × 3 floats
+    const cols = colorByFeed ? new Float32Array(segs.length * 6) : null;
+    for(let i=0; i<segs.length; i++){
+      const [x0,y0,z0]=segs[i].s0, [x1,y1,z1]=segs[i].s1;
+      // machine→Three.js: Y-up, machine-Z→Three-Y, machine-Y→Three-(-Z)
+      pts[i*6+0]=x0; pts[i*6+1]=z0; pts[i*6+2]=-y0;
+      pts[i*6+3]=x1; pts[i*6+4]=z1; pts[i*6+5]=-y1;
+      if(colorByFeed){
+        const col=layerColor(segs[i].me||0,maxFeed);
+        cols[i*6+0]=col.r; cols[i*6+1]=col.g; cols[i*6+2]=col.b;
+        cols[i*6+3]=col.r; cols[i*6+4]=col.g; cols[i*6+5]=col.b;
+      }
     }
-    mesh.instanceMatrix.needsUpdate=true;
-    if(colorByFeed) mesh.instanceColor=new THREE.InstancedBufferAttribute(colors,3);
-    mesh.count=0; mesh.userData.fullCount=segs.length;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pts, 3));
+    if(colorByFeed) geo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+    const mat = new THREE.LineBasicMaterial({
+      color, vertexColors: colorByFeed,
+      linewidth: 1, // note: linewidth > 1 only works in WebGL2 / LineSegments2
+    });
+    const mesh = new THREE.LineSegments(geo, mat);
+    mesh.userData.fullCount = segs.length;
+    mesh.geometry.setDrawRange(0, 0);
     return mesh;
   }
 
-  mesh3=makeInstanced(segs3,0xf0a020,show3); if(mesh3) bedGroup.add(mesh3);
-  mesh5=makeInstanced(segs5,0x20c0e0,show5); if(mesh5) bedGroup.add(mesh5);
+  mesh3 = makeLineSegs(segs3, 0xf0a020, show3); if(mesh3) bedGroup.add(mesh3);
+  mesh5 = makeLineSegs(segs5, 0x20c0e0, show5); if(mesh5) bedGroup.add(mesh5);
 
-  if(showT&&segsT.length){
-    const pts=[];
-    for(const s of segsT){
-      pts.push(new THREE.Vector3(s.s0[0],s.s0[2],-s.s0[1]));
-      pts.push(new THREE.Vector3(s.s1[0],s.s1[2],-s.s1[1]));
+  // Rapid moves — dashed-style via a different color line
+  if(showT && segsT.length){
+    const pts = new Float32Array(segsT.length * 6);
+    for(let i=0; i<segsT.length; i++){
+      const [x0,y0,z0]=segsT[i].s0, [x1,y1,z1]=segsT[i].s1;
+      pts[i*6+0]=x0; pts[i*6+1]=z0; pts[i*6+2]=-y0;
+      pts[i*6+3]=x1; pts[i*6+4]=z1; pts[i*6+5]=-y1;
     }
-    const geo=new THREE.BufferGeometry().setFromPoints(pts);
-    lineT=new THREE.LineSegments(geo,new THREE.LineBasicMaterial({color:0xf59e0b,transparent:true,opacity:0.4}));
-    lineT.userData.fullCount=segsT.length;
-    lineT.geometry.setDrawRange(0,0);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pts, 3));
+    lineT = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({color:0xf59e0b, transparent:true, opacity:0.5}));
+    lineT.userData.fullCount = segsT.length;
+    lineT.geometry.setDrawRange(0, 0);
     bedGroup.add(lineT);
   }
 
   const axHelper=new THREE.AxesHelper(10); axHelper.name='axes'; bedGroup.add(axHelper);
 
-  // Fit camera using full bounds (use bedGroup + staticGroup together)
-  if(mesh3) mesh3.count=mesh3.userData.fullCount;
-  if(mesh5) mesh5.count=mesh5.userData.fullCount;
-  if(lineT) lineT.geometry.setDrawRange(0,lineT.userData.fullCount*2);
+  // Fit camera using full bounds
+  if(mesh3) mesh3.geometry.setDrawRange(0, mesh3.userData.fullCount*2);
+  if(mesh5) mesh5.geometry.setDrawRange(0, mesh5.userData.fullCount*2);
+  if(lineT) lineT.geometry.setDrawRange(0, lineT.userData.fullCount*2);
   const box=new THREE.Box3().setFromObject(rootGroup);
   if(!box.isEmpty()){
     const center=box.getCenter(new THREE.Vector3());
@@ -2476,8 +2493,8 @@ function buildMeshes(nd){
     camera.position.z=baseZ; camera.near=maxD*0.001; camera.far=maxD*300;
     camera.updateProjectionMatrix();
   }
-  if(mesh3) mesh3.count=0;
-  if(mesh5) mesh5.count=0;
+  if(mesh3) mesh3.geometry.setDrawRange(0,0);
+  if(mesh5) mesh5.geometry.setDrawRange(0,0);
   if(lineT) lineT.geometry.setDrawRange(0,0);
 
   document.getElementById('c3ax').textContent=segs3.length.toLocaleString();
@@ -2491,9 +2508,9 @@ function buildMeshes(nd){
 function applyProgress(pct){
   const frac=pct/10000;
   const moveIdx=Math.floor(allMoves.length*frac);
-  if(mesh3) mesh3.count=cum3[moveIdx];
-  if(mesh5) mesh5.count=cum5[moveIdx];
-  if(lineT) lineT.geometry.setDrawRange(0,cumT[moveIdx]*2);
+  if(mesh3) mesh3.geometry.setDrawRange(0, cum3[moveIdx]*2);
+  if(mesh5) mesh5.geometry.setDrawRange(0, cum5[moveIdx]*2);
+  if(lineT) lineT.geometry.setDrawRange(0, cumT[moveIdx]*2);
 
   const pctStr=Math.round(frac*100)+'%';
   document.getElementById('progv').textContent=pctStr;
@@ -2705,29 +2722,8 @@ function sampleInstancedMeshPts(mesh, maxCount, maxSamples){
 }
 
 function buildPrintHull(moveIdx){
-  if(!mesh3 && !mesh5) return null;
-  scene.updateMatrixWorld(true);
-  const pts = [];
-  if(mesh3 && cum3[moveIdx] > 0) pts.push(...sampleInstancedMeshPts(mesh3, cum3[moveIdx], 200));
-  if(mesh5 && cum5[moveIdx] > 0) pts.push(...sampleInstancedMeshPts(mesh5, cum5[moveIdx], 200));
-  if(pts.length < 4) return null;
-  // Reduce to hull vertices to keep SAT fast
-  try{
-    const verts = pts.map(p=>new THREE.Vector3(p[0],p[1],p[2]));
-    const hull  = new THREE.ConvexHull();
-    hull.setFromPoints(verts);
-    const seen = new Set(); const hullPts = [];
-    for(const face of hull.faces){
-      let e = face.edge;
-      do {
-        const vv = e.head().point;
-        const key = `${vv.x.toFixed(3)},${vv.y.toFixed(3)},${vv.z.toFixed(3)}`;
-        if(!seen.has(key)){ seen.add(key); hullPts.push([vv.x,vv.y,vv.z]); }
-        e = e.next;
-      } while(e !== face.edge);
-    }
-    return hullPts.length >= 4 ? hullPts : pts;
-  } catch(ex){ return pts; }
+  // Toolpath mesh collision disabled in CNC mode (toolpath is LineSegments, not InstancedMesh)
+  return null;
 }
 
 function bedPoseKey(){
