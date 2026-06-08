@@ -1218,13 +1218,29 @@
           <div style="margin-bottom:10px;">
             <div style="font-family:var(--mono);font-size:10px;color:var(--text2);margin-bottom:5px;letter-spacing:0.05em;">AXIS LIMITS</div>
             <div style="display:grid;grid-template-columns:20px 1fr 1fr;gap:3px 6px;align-items:center;font-family:var(--mono);font-size:10px;">
-              ${['X','Y','Z','B','C'].map(ax=>`
-                <span style="color:var(--ax-${ax.toLowerCase()})">${ax}</span>
-                <input type="number" id="mb-lim-${ax.toLowerCase()}-min" value="${ax==='B'?-30:ax==='Z'?-500:-400}" step="1"
-                  style="width:100%;font-family:var(--mono);font-size:11px;background:#fff;border:1px solid var(--border);padding:3px 5px;text-align:right;" placeholder="min">
-                <input type="number" id="mb-lim-${ax.toLowerCase()}-max" value="${ax==='B'?110:ax==='Z'?0:400}" step="1"
-                  style="width:100%;font-family:var(--mono);font-size:11px;background:#fff;border:1px solid var(--border);padding:3px 5px;text-align:right;" placeholder="max">
-              `).join('')}
+              <span style="color:var(--ax-x)">X</span>
+              <input type="number" id="mb-lim-x-min" value="-400" step="1" style="width:100%;font-family:var(--mono);font-size:11px;background:#fff;border:1px solid var(--border);padding:3px 5px;text-align:right;" placeholder="min">
+              <input type="number" id="mb-lim-x-max" value="400"  step="1" style="width:100%;font-family:var(--mono);font-size:11px;background:#fff;border:1px solid var(--border);padding:3px 5px;text-align:right;" placeholder="max">
+
+              <span style="color:var(--ax-y)">Y</span>
+              <input type="number" id="mb-lim-y-min" value="-300" step="1" style="width:100%;font-family:var(--mono);font-size:11px;background:#fff;border:1px solid var(--border);padding:3px 5px;text-align:right;" placeholder="min">
+              <input type="number" id="mb-lim-y-max" value="300"  step="1" style="width:100%;font-family:var(--mono);font-size:11px;background:#fff;border:1px solid var(--border);padding:3px 5px;text-align:right;" placeholder="max">
+
+              <span style="color:var(--ax-z)">Z</span>
+              <input type="number" id="mb-lim-z-min" value="-500" step="1" style="width:100%;font-family:var(--mono);font-size:11px;background:#fff;border:1px solid var(--border);padding:3px 5px;text-align:right;" placeholder="min">
+              <input type="number" id="mb-lim-z-max" value="0"    step="1" style="width:100%;font-family:var(--mono);font-size:11px;background:#fff;border:1px solid var(--border);padding:3px 5px;text-align:right;" placeholder="max">
+
+              <span style="color:var(--ax-b)">A</span>
+              <input type="number" id="mb-lim-a-min" value="-120" step="1" style="width:100%;font-family:var(--mono);font-size:11px;background:#fff;border:1px solid var(--border);padding:3px 5px;text-align:right;" placeholder="min">
+              <input type="number" id="mb-lim-a-max" value="120"  step="1" style="width:100%;font-family:var(--mono);font-size:11px;background:#fff;border:1px solid var(--border);padding:3px 5px;text-align:right;" placeholder="max">
+
+              <span style="color:var(--ax-b)">B</span>
+              <input type="number" id="mb-lim-b-min" value="-30"  step="1" style="width:100%;font-family:var(--mono);font-size:11px;background:#fff;border:1px solid var(--border);padding:3px 5px;text-align:right;" placeholder="min">
+              <input type="number" id="mb-lim-b-max" value="110"  step="1" style="width:100%;font-family:var(--mono);font-size:11px;background:#fff;border:1px solid var(--border);padding:3px 5px;text-align:right;" placeholder="max">
+
+              <span style="color:var(--ax-c)">C</span>
+              <input type="number" id="mb-lim-c-min" value="-360" step="1" style="width:100%;font-family:var(--mono);font-size:11px;background:#fff;border:1px solid var(--border);padding:3px 5px;text-align:right;" placeholder="min">
+              <input type="number" id="mb-lim-c-max" value="360"  step="1" style="width:100%;font-family:var(--mono);font-size:11px;background:#fff;border:1px solid var(--border);padding:3px 5px;text-align:right;" placeholder="max">
             </div>
           </div>
           <!-- Group rows -->
@@ -2375,6 +2391,7 @@ async function loadMachine(machineName){
     if(L.x){ set('lim-xmin',L.x[0]); set('lim-xmax',L.x[1]); }
     if(L.y){ set('lim-ymin',L.y[0]); set('lim-ymax',L.y[1]); }
     if(L.z){ set('lim-zmin',L.z[0]); set('lim-zmax',L.z[1]); }
+    if(L.a){ set('lim-bmin',L.a[0]); set('lim-bmax',L.a[1]); } // A uses B jog range for now
     if(L.b){ set('lim-bmin',L.b[0]); set('lim-bmax',L.b[1]); }
   }
 
@@ -2403,10 +2420,10 @@ function updateMachine(moveIdx){
   machineGroup.visible = document.getElementById('showMach').checked;
   if(!machineGroup.visible) return;
 
-  let mx=0, my=0, mz=0, mb=0, mc=0;
+  let mx=0, my=0, mz=0, ma=0, mb=0, mc=0;
   if(allMoves.length && moveIdx > 0){
     const m = allMoves[Math.min(moveIdx-1, allMoves.length-1)];
-    mx=m.mx; my=m.my; mz=m.mz; mb=m.mb; mc=m.mc;
+    mx=m.mx; my=m.my; mz=m.mz; ma=m.ma||0; mb=m.mb; mc=m.mc;
   }
 
   // Apply origin offset
@@ -2418,21 +2435,26 @@ function updateMachine(moveIdx){
     const grp = mGrp[g.id];
     if(!grp) return;
     const pivGrp = mGrp[g.id+'__pivot'];
-    const target = pivGrp || grp; // translate the pivot wrapper if it exists
+    const target = pivGrp || grp;
 
+    const inv = g.invert ? -1 : 1;
     switch(g.axis){
-      case 'X': target.position.set(mx, 0, 0); break;
-      case 'Y': target.position.set(0, 0, -my); break;
-      case 'Z': target.position.set(0, mz, 0); break;
+      case 'X': target.position.set(mx*inv, 0, 0); break;
+      case 'Y': target.position.set(0, 0, -my*inv); break;
+      case 'Z': target.position.set(0, mz*inv, 0); break;
+      case 'A':
+        grp.rotation.set(0,0,0);
+        grp.rotateX(ma*inv * Math.PI/180);
+        break;
       case 'B':
         grp.rotation.set(0,0,0);
-        grp.rotateZ(-mb * Math.PI/180);
+        grp.rotateZ(-mb*inv * Math.PI/180);
         break;
       case 'C':
         grp.rotation.set(0,0,0);
-        grp.rotateY(mc * Math.PI/180);
+        grp.rotateY(mc*inv * Math.PI/180);
         break;
-      default: break; // static
+      default: break;
     }
   });
 }
@@ -2604,7 +2626,7 @@ function tessellateArc(x0,y0,z0, x1,y1,z1, i,j,k, r, cw, plane){
 // ── Parser ────────────────────────────────────────────────────────
 function parseGcode(text){
   const lines=text.split('\n');
-  let x=0,y=0,z=0,b=0,c=0,f=0;
+  let x=0,y=0,z=0,a=0,b=0,c=0,f=0;
   let absXYZ=true;
   let spindle=null, coolant='OFF', wcs='G54';
   let plane='G17';
@@ -2624,7 +2646,7 @@ function parseGcode(text){
     const s1=toPart(ax,ay,az,b,c);
     const dx2=s1[0]-s0[0],dy2=s1[1]-s0[1],dz2=s1[2]-s0[2];
     if(dx2*dx2+dy2*dy2+dz2*dz2<1e-8) return;
-    result.push({type,s0,s1,mx:ax,my:ay,mz:az,mb:b,mc:c,me:f,layer:0,
+    result.push({type,s0,s1,mx:ax,my:ay,mz:az,ma:a,mb:b,mc:c,me:f,layer:0,
       lineNum:li+1,rawLine:raw,absXYZ,absE:true,
       hotend:spindle,bedTemp:null,fan:coolant,plane,wcs,toolChange:null});
   }
@@ -2706,7 +2728,7 @@ function parseGcode(text){
 
     // ── Parse axis words and feedrate ────────────────────────────
     const xm=lu.match(/\bX(-?[\d.]+)/),ym=lu.match(/\bY(-?[\d.]+)/),zm=lu.match(/\bZ(-?[\d.]+)/);
-    const bm=lu.match(/\bB(-?[\d.]+)/),cm=lu.match(/\bC(-?[\d.]+)/),fm=lu.match(/\bF([\d.]+)/);
+    const am=lu.match(/\bA(-?[\d.]+)/),bm=lu.match(/\bB(-?[\d.]+)/),cm=lu.match(/\bC(-?[\d.]+)/),fm=lu.match(/\bF([\d.]+)/);
     const im=lu.match(/\bI(-?[\d.]+)/),jm=lu.match(/\bJ(-?[\d.]+)/),km=lu.match(/\bK(-?[\d.]+)/);
     const rm=lu.match(/\bR(-?[\d.]+)/);
 
@@ -2725,6 +2747,7 @@ function parseGcode(text){
     if(motionCode==='G0'||motionCode==='G1'||motionCode==='G2'||motionCode==='G3') modalMotion=motionCode;
 
     if(fm) f=parseFloat(fm[1]);
+    if(am) a=parseFloat(am[1]);
     if(bm) b=parseFloat(bm[1]);
     if(cm) c=parseFloat(cm[1]);
 
@@ -2735,7 +2758,7 @@ function parseGcode(text){
       if(xm) x=absXYZ?parseFloat(xm[1]):x+parseFloat(xm[1]);
       if(ym) y=absXYZ?parseFloat(ym[1]):y+parseFloat(ym[1]);
       if(zm) z=absXYZ?parseFloat(zm[1]):z+parseFloat(zm[1]);
-      const is5ax=Math.abs(b)>0.5||Math.abs(c)>0.5||bm||cm;
+      const is5ax=Math.abs(a)>0.5||Math.abs(b)>0.5||Math.abs(c)>0.5||am||bm||cm;
       const type=motionCode==='G0'?'travel':(is5ax?'e5':'e3');
       pushMove(px,py,pz, x,y,z, li,raw,type);
       continue;
@@ -4699,10 +4722,12 @@ function renderMbGroupList(){
     row.className='mb-group-row'+(g.id===mbSelectedId?' selected':'');
     row.dataset.id=g.id;
     const axCls=g.axis?` ${g.axis}`:'';
+    const invBadge=g.invert?'<span style="font-size:9px;color:var(--red);font-family:var(--mono);font-weight:700;">INV</span>':'';
     row.innerHTML=`
       <div style="width:12px;height:12px;border-radius:2px;background:${g.color||'#888'};flex-shrink:0;border:1px solid rgba(0,0,0,0.2);"></div>
       <span class="mb-group-id">${g.id}</span>
       <span class="mb-group-axis${axCls}">${g.axis||'—'}</span>
+      ${invBadge}
       <span class="mb-group-stl">${g.stl||'no STL'}</span>
       <span style="font-size:10px;color:var(--text3);">${g.parent||'root'}</span>
       <button class="mb-del" onclick="mbDeleteGroup('${g.id}');event.stopPropagation()">×</button>
@@ -4718,7 +4743,7 @@ function renderMbDetail(g){
   if(!g){ title.textContent='Select a group'; body.innerHTML=''; return; }
   title.textContent='Edit: '+g.id;
   const parentOpts=['(root)',...mbGroups.filter(x=>x.id!==g.id).map(x=>x.id)];
-  const axisOpts=['(static)','X','Y','Z','B','C'];
+  const axisOpts=['(static)','X','Y','Z','A','B','C'];
   body.innerHTML=`
     <div class="mb-field"><label>Group ID</label>
       <input id="mbd-id" type="text" value="${g.id}" oninput="mbSetField('${g.id}','id',this.value)"></div>
@@ -4727,9 +4752,15 @@ function renderMbDetail(g){
         ${parentOpts.map(p=>`<option${(g.parent||'(root)')===p?' selected':''}>${p}</option>`).join('')}
       </select></div>
     <div class="mb-field"><label>Axis</label>
-      <select id="mbd-axis" onchange="mbSetField('${g.id}','axis',this.value==='(static)'?null:this.value)">
-        ${axisOpts.map(a=>`<option${(g.axis||'(static)')===a?' selected':''}>${a}</option>`).join('')}
-      </select></div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <select id="mbd-axis" style="flex:1;" onchange="mbSetField('${g.id}','axis',this.value==='(static)'?null:this.value)">
+          ${axisOpts.map(a=>`<option${(g.axis||'(static)')===a?' selected':''}>${a}</option>`).join('')}
+        </select>
+        <label style="display:flex;align-items:center;gap:4px;font-family:var(--mono);font-size:10px;cursor:pointer;white-space:nowrap;">
+          <input type="checkbox" ${g.invert?'checked':''} onchange="mbSetField('${g.id}','invert',this.checked)">
+          INVERT
+        </label>
+      </div></div>
     <div class="mb-field"><label>STL filename</label>
       <input type="text" value="${g.stl||''}" placeholder="e.g. base.stl"
         oninput="mbSetField('${g.id}','stl',this.value)"></div>
@@ -4789,9 +4820,9 @@ function mbBuildJson(){
   const oy=parseFloat(document.getElementById('mb-oy').value)||0;
   const oz=parseFloat(document.getElementById('mb-oz').value)||0;
   const limits={};
-  ['x','y','z','b','c'].forEach(ax=>{
-    const mn=parseFloat(document.getElementById('mb-lim-'+ax+'-min').value);
-    const mx2=parseFloat(document.getElementById('mb-lim-'+ax+'-max').value);
+  ['x','y','z','a','b','c'].forEach(ax=>{
+    const mn=parseFloat(document.getElementById('mb-lim-'+ax+'-min')?.value);
+    const mx2=parseFloat(document.getElementById('mb-lim-'+ax+'-max')?.value);
     if(!isNaN(mn)&&!isNaN(mx2)) limits[ax]=[mn,mx2];
   });
   return {name,groups:mbGroups.map(g=>({...g})),origin:[ox,oy,oz],limits};
@@ -4801,7 +4832,10 @@ document.getElementById('mb-export-btn').addEventListener('click',()=>{
   const json=JSON.stringify(mbBuildJson(),null,2);
   const a=document.createElement('a');
   a.href='data:application/json,'+encodeURIComponent(json);
-  a.download='machine.json'; a.click();
+  a.download='machine.json';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
 });
 
 document.getElementById('mb-load-btn').addEventListener('click',()=>document.getElementById('mb-import-file').click());
@@ -5061,9 +5095,13 @@ document.getElementById('tool-add-btn').addEventListener('click', () => {
 // ── Export / Import ───────────────────────────────────────────────────────
 document.getElementById('tool-export-btn').addEventListener('click', () => {
   const json = JSON.stringify({ toolTable }, null, 2);
-  const blob = new Blob([json], { type: 'application/json' });
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-  a.download = 'tool_table.json'; a.click();
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+  a.download = 'tool_table.json';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(a.href);
 });
 
 document.getElementById('tool-import-btn').addEventListener('click', () => {
